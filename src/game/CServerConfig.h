@@ -843,6 +843,15 @@ public:
 	lpctstr GetSkillKey( SKILL_TYPE index ) const;
 
     /**
+     * @brief   Gets skill Name define in script.
+     *
+     * @param   index   Zero-based index of the.
+     *
+     * @return  The skill name, if not return skillKey.
+     */
+    lpctstr GetNameCustom(SKILL_TYPE index) const;
+
+    /**
      * @brief   Query if 'index' has 'skf' skill flag.
      *
      * @param   index   Zero-based index of the.

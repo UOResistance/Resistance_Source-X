@@ -265,7 +265,7 @@ ushort CChar::NPC_OnTrainCheck( CChar * pCharSrc, SKILL_TYPE Skill )
 		return (ushort)uiMaxDecrease;
 
 	tchar *z = Str_GetTemp();
-	snprintf(z, Str_TempLength(), pszMsg, g_Cfg.GetSkillKey(Skill));
+	snprintf(z, Str_TempLength(), pszMsg, g_Cfg.GetNameCustom(Skill));
 	Speak(z);
 	return 0;
 }
@@ -392,8 +392,9 @@ bool CChar::NPC_OnTrainHear( CChar * pCharSrc, lpctstr pszCmd )
 		if ( !g_Cfg.m_SkillIndexDefs.valid_index((SKILL_TYPE)i) )
 			continue;
 
-		lpctstr pSkillKey = g_Cfg.GetSkillKey((SKILL_TYPE)i);
-		if ( FindStrWord( pszCmd, pSkillKey ) <= 0)
+		//lpctstr pSkillKey = g_Cfg.GetSkillKey((SKILL_TYPE)i);
+        lpctstr pSkillName = g_Cfg.GetNameCustom((SKILL_TYPE)i);
+		if ( FindStrWord( pszCmd, pSkillName) <= 0)
 			continue;
 
 		// Can we train in this ?
@@ -401,7 +402,7 @@ bool CChar::NPC_OnTrainHear( CChar * pCharSrc, lpctstr pszCmd )
 		if ( iTrainCost <= 0 )
 			return true;
 
-		snprintf(tsMsg.buffer(), tsMsg.capacity(), g_Cfg.GetDefaultMsg(DEFMSG_NPC_TRAINER_PRICE), iTrainCost, pSkillKey);
+		snprintf(tsMsg.buffer(), tsMsg.capacity(), g_Cfg.GetDefaultMsg(DEFMSG_NPC_TRAINER_PRICE), iTrainCost, pSkillName);
 		Speak(tsMsg);
 		CItemMemory * pMemory = Memory_AddObjTypes( pCharSrc, MEMORY_SPEAK );
 		if ( pMemory )
@@ -441,7 +442,7 @@ bool CChar::NPC_OnTrainHear( CChar * pCharSrc, lpctstr pszCmd )
 			Str_ConcatLimitNull(tsMsg.buffer(), pPrvSkill, tsMsg.capacity() );
 		}
 
-		pPrvSkill = g_Cfg.GetSkillKey((SKILL_TYPE)i);
+		pPrvSkill = g_Cfg.GetNameCustom((SKILL_TYPE)i);
 		++iCount;
 	}
 

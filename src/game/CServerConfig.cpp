@@ -1552,6 +1552,18 @@ lpctstr CServerConfig::GetSkillKey( SKILL_TYPE index ) const
     return m_SkillIndexDefs[uiIndex]->GetKey();
 }
 
+lpctstr CServerConfig::GetNameCustom(SKILL_TYPE index) const
+{
+    // future: underlying type for SPELL_TYPE to avoid casts
+    if (index < 0)
+        return nullptr;
+    const size_t uiIndex = (size_t)index;
+    if (!m_SkillIndexDefs.valid_index(uiIndex))
+        return nullptr;
+    return m_SkillIndexDefs[uiIndex]->GetNameCustom();
+}
+
+
 const CSkillDef* CServerConfig::GetSkillDef( SKILL_TYPE index ) const
 {
     if (index < 0)

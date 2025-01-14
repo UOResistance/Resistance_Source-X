@@ -36,3 +36,6 @@ Here the custom change on Resistance FORK
          ARGN (R): Tell if trigger is launch on 1:Paperdoll 2:Status 3: Tooltip
          RETURN 1 : Change the name to the new value of ARGS
 
+2025-01-14, Jhobean
+- Changed: Remove Training context menu on vendor (Use script instead)
+			Now vendor will understand and talk about skill by their NAME define on script instead of the Key name.

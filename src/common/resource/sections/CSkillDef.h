@@ -104,6 +104,14 @@ public:
         return m_sKey;
     }
 
+    lpctstr GetNameCustom() const
+    {
+        //CSString = m_sName;
+        if (m_sName.IsEmpty())
+            return m_sKey;
+        return m_sName;
+    }
+
     virtual lpctstr GetName() const override
     {
         return GetKey();

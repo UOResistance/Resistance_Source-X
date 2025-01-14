@@ -2611,6 +2611,7 @@ void CClient::Event_AOSPopupMenuRequest( dword uid ) //construct packet after a 
 				m_pPopupPacket->addOption(POPUP_VENDORBUY, 6103, POPUPFLAG_COLOR, 0xFFFF);
 				m_pPopupPacket->addOption(POPUP_VENDORSELL, 6104, POPUPFLAG_COLOR, 0xFFFF);
 
+                /* RETRAIT DES TOOLTIP TRAINING du core. Utilisé en script
 				for (unsigned int i = 0; i < g_Cfg.m_iMaxSkill; ++i)
 				{
 					if (!g_Cfg.m_SkillIndexDefs.valid_index(i))
@@ -2621,13 +2622,13 @@ void CClient::Event_AOSPopupMenuRequest( dword uid ) //construct packet after a 
 						continue;
 
 					ushort wSkillNPC = pChar->Skill_GetBase( (SKILL_TYPE)i );
-					if (wSkillNPC < 300)
+					if (wSkillNPC < 300) //g_Cfg.m_iTrainSkillPercent ???
 						continue;
 
 					ushort wSkillPlayer = m_pChar->Skill_GetBase( (SKILL_TYPE)i );
 					word wFlag = ((wSkillPlayer >= g_Cfg.m_iTrainSkillMax) || (wSkillPlayer >= (wSkillNPC * g_Cfg.m_iTrainSkillPercent) / 100)) ? POPUPFLAG_LOCKED : POPUPFLAG_COLOR;
 					m_pPopupPacket->addOption( (word)(POPUP_TRAINSKILL + i), 6000 + i, wFlag, 0xFFFF);
-				}
+				}*/
 
 				//if (pChar->m_pNPC->m_Brain == NPCBRAIN_STABLE)
 				//{
