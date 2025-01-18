@@ -39,3 +39,7 @@ Here the custom change on Resistance FORK
 2025-01-14, Jhobean
 - Changed: Remove Training context menu on vendor (Use script instead)
 			Now vendor will understand and talk about skill by their NAME define on script instead of the Key name.
+			
+2025-01-18, Jhobean
+- Changed: Allow hiding if wear a light source on LAYER 9. Avoid HIDING_TOOLIT message
+

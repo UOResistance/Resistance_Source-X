@@ -2498,6 +2498,9 @@ int CChar::Skill_Hiding( SKTRIG_TYPE stage )
 			const CItem* pItem = static_cast<const CItem*>(pObjRec);
 			if ( !CItemBase::IsVisibleLayer( pItem->GetEquipLayer()))
 				continue;
+            if (pItem->GetContainedLayer() == 9) //Layer talisman non inclus
+                continue;
+
 			if ( pItem->Can( CAN_I_LIGHT ))
 			{
 				SysMessageDefault( DEFMSG_HIDING_TOOLIT );
