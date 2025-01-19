@@ -42,4 +42,6 @@ Here the custom change on Resistance FORK
 			
 2025-01-18, Jhobean
 - Changed: Allow hiding if wear a light source on LAYER 9. Avoid HIDING_TOOLIT message
+- Changed: When an Item is invisible GM always see type spawn RED color. We added T_trap to this list too. 
+			All Trap invisible will be see red by GM or by player mentionned by the trap tag TAG.SeenBy_<UID>
 
