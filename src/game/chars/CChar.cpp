@@ -341,7 +341,7 @@ CChar::CChar( CREID_TYPE baseID ) :
 CChar::~CChar()
 {
 	ADDTOCALLSTACK("CChar::~CChar");
-    	EXC_TRY("Cleanup in destructor");
+    EXC_TRY("Cleanup in destructor");
 
 	CChar::DeletePrepare();
 	CChar::DeleteCleanup(true);
@@ -398,7 +398,7 @@ void CChar::DeleteCleanup(bool fForce)
 	}
 }
 
-// Called before Delete()
+// Called before Delete(). Notify the world/scripts that i'm going to delete this char.
 // @Destroy or f_onchar_delete can prevent the deletion
 bool CChar::NotifyDelete(bool fForce)
 {
@@ -1118,7 +1118,7 @@ bool CChar::DupeFrom(const CChar * pChar, bool fNewbieItems )
 	m_atUnk.m_dwArg2 = pChar->m_atUnk.m_dwArg2;
 	m_atUnk.m_dwArg3 = pChar->m_atUnk.m_dwArg3;
 
-	_iTimeNextRegen = pChar->_iTimeNextRegen;
+    _iTimeNextRegen = pChar->_iTimeNextRegen;
 	_iTimeCreate = pChar->_iTimeCreate;
 
 	_iTimeLastHitsUpdate = pChar->_iTimeLastHitsUpdate;
@@ -1263,7 +1263,7 @@ bool CChar::DupeFrom(const CChar * pChar, bool fNewbieItems )
 
 	FixWeight();
 
-	if (!pChar->IsSleeping())
+    if (!pChar->IsSleeping() && !IsSleeping())
 	{
 		_GoAwake();
 	}
@@ -1537,7 +1537,7 @@ CREID_TYPE CChar::GetID() const
 	return pCharDef->GetID();
 }
 
-dword CChar::GetBaseID() const
+dword CChar::GetIDCommon() const
 {
     return GetID();
 }
@@ -2885,7 +2885,8 @@ do_default:
 					sVal.Clear();
 			}
 			return true;
-		case CHC_ID:
+        case CHC_ID:
+            // Same as BASEID??
 			sVal = g_Cfg.ResourceGetName( pCharDef->GetResourceID());
 			return true;
 		case CHC_ISGM:
@@ -4680,7 +4681,7 @@ bool CChar::r_Verb( CScript &s, CTextConsole * pSrc ) // Execute command from sc
 				Effect( EFFECT_LIGHTNING, ITEMID_NOTHING, pCharSrc );
 				OnTakeDamage( 10000, pCharSrc, DAMAGE_GOD );
 				Stat_SetVal( STAT_STR, 0 );
-				g_Log.Event( LOGL_EVENT|LOGM_KILLS|LOGM_GM_CMDS, "'%s' was KILLed by '%s'\n", GetName(), pSrc->GetName());
+                g_Log.Event( LOGL_EVENT|LOGM_KILLS|LOGM_GM_CMDS, "'%s' was KILLed by '%s'\n", GetName(), pSrc->GetName());
 			}
 			break;
 		case CHV_MAKEITEM:
