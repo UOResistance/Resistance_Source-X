@@ -1997,7 +1997,7 @@ HUE_TYPE CItem::GetHueVisible() const
 	{
 		if (IsAttr(ATTR_INVIS))
 		{
-			if (!IsType(IT_SPAWN_CHAR) && !IsType(IT_SPAWN_ITEM) && !IsType(IT_TRAP))  //Spawn point always keep their m_wHue (HUE_RED_DARK)
+			if (!IsType(IT_SPAWN_CHAR) && !IsType(IT_SPAWN_ITEM) && !IsType(IT_TRAP_INACTIVE))  //Spawn point always keep their m_wHue (HUE_RED_DARK) //Custom resistance on ajoute IT_TRAP_INACTIVE
 				return g_Cfg.m_iColorInvisItem;
 		}
 	}
