@@ -2661,10 +2661,11 @@ PacketPaperdoll::PacketPaperdoll(const CClient* target, CChar* character) : Pack
 
     if (IsTrigUsed(TRIGGER_DISPLAYNAME) && (target->GetChar() != character)) //Avoid launch trigger if the target is the same character
     {
+        CChar* CharacterCast = const_cast<CChar*>(target->GetChar()); //CONST_CAST très dangereux!  Work around cheap
         CScriptTriggerArgs args;
         args.m_s1 = character->GetName();
         args.m_iN1 = 1;//Trigger use on paperdoll
-        if (character->OnTrigger(CTRIG_DisplayName, target->GetChar(), &args) == TRIGRET_RET_TRUE)
+        if (character->OnTrigger(CTRIG_DisplayName, CharacterCast, &args) == TRIGRET_RET_TRUE)
         {
             bCustomName = 1;
             sShowName = args.m_s1;
