@@ -1669,9 +1669,10 @@ int CChar::Skill_Lumberjack( SKTRIG_TYPE stage )
 	}
 
 	CItem *pItem = Skill_NaturalResource_Create(pResBit, SKILL_LUMBERJACKING);
-	if ( !pItem )
+
+	if ( !pItem ) 
 	{
-		SysMessageDefault(DEFMSG_LUMBERJACKING_2);
+		//SysMessageDefault(DEFMSG_LUMBERJACKING_2);//mis en commentaire puisque quon créer nous même notre gembit et ça fait des erreurs
 		return -SKTRIG_FAIL;
 	}
 
