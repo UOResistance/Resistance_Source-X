@@ -128,8 +128,10 @@ bool CChar::CheckCrimeSeen( SKILL_TYPE SkillToSee, CChar * pCharMark, const CObj
 		if ( pItem && ptcAction )
 		{
 			if ( pCharMark )
-				snprintf(z, Str_TempLength(), g_Cfg.GetDefaultMsg(DEFMSG_MSG_YOUNOTICE_2), GetName(),
-                    ptcAction, fYour ? g_Cfg.GetDefaultMsg(DEFMSG_MSG_YOUNOTICE_YOUR) : pCharMark->GetName(), fYour ? "" : g_Cfg.GetDefaultMsg(DEFMSG_MSG_YOUNOTICE_S), pItem->GetName());
+                //snprintf(z, Str_TempLength(), g_Cfg.GetDefaultMsg(DEFMSG_MSG_YOUNOTICE_2), GetName(),
+                 //   ptcAction, fYour ? g_Cfg.GetDefaultMsg(DEFMSG_MSG_YOUNOTICE_YOUR) : pCharMark->GetName(), fYour ? "" : g_Cfg.GetDefaultMsg(DEFMSG_MSG_YOUNOTICE_S), pItem->GetName());
+                snprintf(z, Str_TempLength(), g_Cfg.GetDefaultMsg(DEFMSG_MSG_YOUNOTICE_2), "quelqu'un",
+                    ptcAction, fYour ? g_Cfg.GetDefaultMsg(DEFMSG_MSG_YOUNOTICE_YOUR) : "un", fYour ? "" : g_Cfg.GetDefaultMsg(DEFMSG_MSG_YOUNOTICE_S), pItem->GetName());
 			else
 				snprintf(z, Str_TempLength(), g_Cfg.GetDefaultMsg(DEFMSG_MSG_YOUNOTICE_1), GetName(), ptcAction, pItem->GetName());
 		}
