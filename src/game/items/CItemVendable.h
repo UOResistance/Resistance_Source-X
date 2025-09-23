@@ -20,7 +20,7 @@ private:
 public:
 	static const char *m_sClassName;
 	CItemVendable( ITEMID_TYPE id, CItemBase * pItemDef );
-	virtual ~CItemVendable();
+    virtual ~CItemVendable() override;
 
 	CItemVendable(const CItemVendable& copy) = delete;
 	CItemVendable& operator=(const CItemVendable& other) = delete;
@@ -31,7 +31,7 @@ public:
 
 	void SetPlayerVendorPrice( dword dwVal );
 	dword GetBasePrice() const;
-	dword GetVendorPrice( int iConvertFactor , bool forselling); 
+	dword GetVendorPrice( int iConvertFactor , bool forselling);
 
 	bool IsValidSaleItem( bool fBuyFromVendor ) const;
 	bool IsValidNPCSaleItem() const;

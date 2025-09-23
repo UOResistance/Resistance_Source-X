@@ -163,7 +163,9 @@ bool CCacheableScriptFile::_Open(lpctstr ptcFilename, uint uiModeFlags)
                 // go past the end of this substring, there should be the delimiter/newline/etc, just skip it.
                 lpctstr str_end = &str_start[len_to_copy];
                 _SkipOneEndline(str_end);
+
                 _fileContent->emplace_back(str_start, len_to_copy);
+
                 iStrLen += (str_end - len_to_copy - str_start);
 
                 fFirstLine = false;
@@ -186,7 +188,7 @@ bool CCacheableScriptFile::_Open(lpctstr ptcFilename, uint uiModeFlags)
 bool CCacheableScriptFile::Open(lpctstr ptcFilename, uint uiModeFlags)
 {
     ADDTOCALLSTACK("CCacheableScriptFile::Open");
-    MT_UNIQUE_LOCK_RETURN(CCacheableScriptFile::_Open(ptcFilename, uiModeFlags));
+    MT_UNIQUE_LOCK_RETURN(this, CCacheableScriptFile::_Open(ptcFilename, uiModeFlags));
 }
 
 void CCacheableScriptFile::_Close()
@@ -205,7 +207,7 @@ void CCacheableScriptFile::_Close()
 void CCacheableScriptFile::Close()
 {
     ADDTOCALLSTACK("CCacheableScriptFile::Close");
-    MT_UNIQUE_LOCK_SET;
+    MT_UNIQUE_LOCK_SET(this);
     _Close();
 }
 
@@ -222,7 +224,7 @@ bool CCacheableScriptFile::IsFileOpen() const
 {
     ADDTOCALLSTACK("CCacheableScriptFile::IsFileOpen");
 
-    MT_SHARED_LOCK_SET;
+    MT_SHARED_LOCK_SET(this);
     if ( _useDefaultFile() )
         MT_RETURN(CSFileText::_IsFileOpen());
 
@@ -235,12 +237,13 @@ bool CCacheableScriptFile::_IsEOF() const
     if ( _useDefaultFile() )
         return CSFileText::_IsEOF();
 
-    return (_fileContent->empty() || ((uint)_iCurrentLine == _fileContent->size()) );
+    const size_t uiFileSize = _fileContent->size(); // might be faster than empty() on some implementations
+    return (!uiFileSize || ((uint)_iCurrentLine == uiFileSize) );
 }
 bool CCacheableScriptFile::IsEOF() const
 {
     //ADDTOCALLSTACK("CCacheableScriptFile::IsEOF");
-    MT_SHARED_LOCK_RETURN(_IsEOF());
+    MT_SHARED_LOCK_RETURN(this, _IsEOF());
 }
 
 tchar * CCacheableScriptFile::_ReadString(tchar *pBuffer, int sizemax)
@@ -248,6 +251,7 @@ tchar * CCacheableScriptFile::_ReadString(tchar *pBuffer, int sizemax)
     // This function is called for each script line which is being parsed (so VERY frequently), and ADDTOCALLSTACK is expensive if called
     // this much often, so here it's to be preferred ADDTOCALLSTACK_DEBUG, even if we'll lose stack trace precision.
     //ADDTOCALLSTACK_DEBUG("CCacheableScriptFile::_ReadString");
+    EXC_TRY("_ReadString");
     ASSERT(sizemax > 0);
     if ( _useDefaultFile() )
         return CSFileText::_ReadString(pBuffer, sizemax);
@@ -255,31 +259,33 @@ tchar * CCacheableScriptFile::_ReadString(tchar *pBuffer, int sizemax)
     //*pBuffer = '\0';
     ASSERT(_fileContent);
 
-    if (_fileContent->empty() || ((uint)_iCurrentLine >= _fileContent->size()))
+    size_t uiSize = _fileContent->size(); // might be faster than empty() on some implementations
+    if (!uiSize || ((uint)_iCurrentLine >= uiSize))
         return nullptr;
 
-    std::string const& cur_line = (*_fileContent)[_iCurrentLine];
+    const std::string_view cur_line = (*_fileContent)[_iCurrentLine];
+    uiSize = cur_line.size();
     ++_iCurrentLine;
-    if (cur_line.empty())
+    if (!uiSize)
         return pBuffer;
 
-    size_t bytes_to_copy = cur_line.size();
+    size_t bytes_to_copy = uiSize;
     if (bytes_to_copy >= size_t(sizemax))
         bytes_to_copy = size_t(sizemax) - 1;
-    if (cur_line.size() != 0)
-    {
-        const lpctstr cur_line_cstr = cur_line.c_str();
-        size_t copied = Str_CopyLimit(pBuffer, cur_line_cstr, bytes_to_copy);
+    //if (!cur_line.empty())
+    //{
+        size_t copied = Str_CopyLimit(pBuffer, cur_line.data(), bytes_to_copy);
         pBuffer[copied] = '\0';
-    }
+    //}
 
+    EXC_CATCH;
     return pBuffer;
 }
 
 tchar * CCacheableScriptFile::ReadString(tchar *pBuffer, int sizemax)
 {
     //ADDTOCALLSTACK_DEBUG("CCacheableScriptFile::ReadString");
-    MT_UNIQUE_LOCK_RETURN(CCacheableScriptFile::_ReadString(pBuffer, sizemax));
+    MT_UNIQUE_LOCK_RETURN(this, CCacheableScriptFile::_ReadString(pBuffer, sizemax));
 }
 
 void CCacheableScriptFile::_dupeFrom(CCacheableScriptFile *other)
@@ -294,31 +300,30 @@ void CCacheableScriptFile::_dupeFrom(CCacheableScriptFile *other)
 }
 void CCacheableScriptFile::dupeFrom(CCacheableScriptFile *other)
 {
-    MT_UNIQUE_LOCK_SET;
+    MT_UNIQUE_LOCK_SET(this);
     _dupeFrom(other);
 }
 
 bool CCacheableScriptFile::_HasCache() const
 {
-    if ((_fileContent == nullptr) /* || _fileContent->empty()  Exclude this: might just be an empty file!*/)
+    if ((_fileContent == nullptr) /* || _fileContent->empty()  Exclude this: might just be an empty file, which is legit!*/)
         return false;
     return true;
 }
 bool CCacheableScriptFile::HasCache() const
 {
-    MT_SHARED_LOCK_RETURN(_HasCache());
+    MT_SHARED_LOCK_RETURN(this, _HasCache());
 }
 
 bool CCacheableScriptFile::_useDefaultFile() const
 {
-    if ( _IsWriteMode() || ( _GetFullMode() & OF_DEFAULTMODE ))
-        return true;
-    return false;
+    return ( _IsWriteMode() || ( _GetFullMode() & OF_DEFAULTMODE ));
 }
 /*
+ *
 bool CCacheableScriptFile::useDefaultFile() const
 {
-    MT_SHARED_LOCK_RETURN(_useDefaultFile());
+    MT_SHARED_LOCK_RETURN(this, _useDefaultFile());
 }*/
 
 int CCacheableScriptFile::_Seek(int iOffset, int iOrigin)
@@ -342,7 +347,7 @@ int CCacheableScriptFile::_Seek(int iOffset, int iOrigin)
 int CCacheableScriptFile::Seek(int iOffset, int iOrigin)
 {
     ADDTOCALLSTACK("CCacheableScriptFile::Seek");
-    MT_UNIQUE_LOCK_RETURN(CCacheableScriptFile::_Seek(iOffset, iOrigin));
+    MT_UNIQUE_LOCK_RETURN(this, CCacheableScriptFile::_Seek(iOffset, iOrigin));
 }
 
 int CCacheableScriptFile::_GetPosition() const
@@ -356,5 +361,5 @@ int CCacheableScriptFile::_GetPosition() const
 int CCacheableScriptFile::GetPosition() const
 {
     ADDTOCALLSTACK("CCacheableScriptFile::GetPosition");
-    MT_UNIQUE_LOCK_RETURN(CCacheableScriptFile::_GetPosition());
+    MT_UNIQUE_LOCK_RETURN(this, CCacheableScriptFile::_GetPosition());
 }

@@ -157,7 +157,7 @@ public:
 	CUID m_uidLink;		// Linked to this other object in the world. (owned, key, etc)
 
 	// Type specific info. IT_TYPE
-	union // 4(more1) + 4(more2) + 6(morep: (2 morex) (2 morey) (1 morez) (1 morem) ) = 14 bytes (+ padding?)
+    union // 4(more1) + 4(more2) + 6(morep: (2 morex) (2 morey) (1 morez) (1 morem) ) = 14 bytes (+ 2 padding?)
 	{
 		// IT_NORMAL
 		struct	// used only to save and restore all this junk.
@@ -216,7 +216,7 @@ public:
 		// IT_WEAPON_*
 		struct
 		{
-			word m_dwHitsCur;		// more1l=eqiv to quality of the item (armor/weapon).
+            word m_wHitsCur;		// more1l=eqiv to quality of the item (armor/weapon).
 			word m_wHitsMax;		// more1h=can only be repaired up to this level.
 			int32 m_spellcharges;	// more2=for a wand etc.
 			word m_spell;			// morex=SPELL_TYPE = The magic spell cast on this. (daemons breath)(boots of strength) etc
@@ -235,7 +235,7 @@ public:
 		// IT_JEWELRY
 		struct
 		{
-			word m_dwHitsCur;		// more1l= eqiv to quality of the item (armor/weapon).
+            word m_wHitsCur;		// more1l= eqiv to quality of the item (armor/weapon).
 			word m_wHitsMax;		// more1h= can only be repaired up to this level.
 			int32 m_spellcharges;	// more2 = ? spell charges ? not sure how used here..
 			word m_spell;			// morex = SPELL_TYPE = The magic spell cast on this. (daemons breath)(boots of strength) etc
@@ -513,7 +513,7 @@ public:
 		// IT_WEB
 		struct
 		{
-			dword m_dwHitsCur;	// more1 = how much damage the web can take.
+            dword m_wHitsCur;	// more1 = how much damage the web can take.
 		} m_itWeb;
 
 		// IT_DREAM_GATE
@@ -593,7 +593,8 @@ public:
 
 protected:
 	virtual int FixWeirdness() override;
-	void DeleteCleanup(bool fForce);
+    virtual void DeletePrepare() override;
+    void DeleteCleanup(bool fForce) NONVIRTUAL;
 public:
 	virtual bool NotifyDelete(); // overridden CItemContainer:: method
 	virtual bool Delete(bool fForce = false) override;
@@ -607,8 +608,7 @@ protected:
 public:
 	virtual bool _OnTick() override;
 
-	virtual bool _CanTick(bool fParentGoingToSleep = false) const override;
-	//virtual bool  CanTick(bool fParentGoingToSleep = false) const override;   // Not needed: the right virtual is called by CTimedObj::_CanTick.
+    virtual bool _TickableState() const override;
 	bool _CanHoldTimer() const;
 
     virtual void DupeCopy( const CObjBase * pItem ) override;
@@ -726,7 +726,9 @@ public:
 	bool IsTopLevelMultiLocked() const;
 	bool IsMovableType() const;
 	bool IsMovable() const;
-	virtual int GetVisualRange() const override;
+
+    [[nodiscard]]
+    virtual int GetVisualRange() const override;
 
 	bool IsStackableException() const;
 	bool IsStackable( const CItem * pItem ) const;
@@ -798,7 +800,7 @@ public:
     void r_LoadMore2(dword dwVal);
 
     lpctstr ResourceGetName(const CResourceID& rid);
-    lpctstr ResourceGetName(const CResourceIDBase& rid, RES_TYPE iExpectedType);
+    lpctstr ResourceTypedGetName(const CResourceIDBase& rid, RES_TYPE iExpectedType, lptstr* ptcOutError);
 
 	virtual bool r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef ) override;
 	virtual void r_Write( CScript & s ) override;
@@ -821,8 +823,8 @@ public:
     */
     void SetTriggerActive(lpctstr trig = nullptr);
 
-	virtual TRIGRET_TYPE OnTrigger( lpctstr pszTrigName, CTextConsole * pSrc, CScriptTriggerArgs * pArgs ) override;
-	TRIGRET_TYPE OnTrigger( ITRIG_TYPE trigger, CTextConsole * pSrc, CScriptTriggerArgs * pArgs = nullptr );
+    virtual TRIGRET_TYPE OnTrigger( lpctstr pszTrigName, CScriptTriggerArgsPtr pArgs, CTextConsole * pSrc ) override;
+    TRIGRET_TYPE OnTrigger( ITRIG_TYPE trigger, CScriptTriggerArgsPtr pArgs, CTextConsole * pSrc );
 
 	// Item type specific stuff.
     inline bool IsType(IT_TYPE type) const noexcept {
@@ -883,7 +885,7 @@ public:
 	bool IsBookSystem() const;
 
 	void OnExplosion();
-	virtual bool OnSpellEffect( SPELL_TYPE spell, CChar * pCharSrc, int iSkillLevel, CItem * pSourceItem, bool bReflecting = false, int64 iDuration = 0) override;
+    virtual bool OnSpellEffect( SPELL_TYPE spell, CChar * pCharSrc, int iSkillLevel, CItem * pSourceItem, bool fReflecting = false, int64 iDuration = 0) override;
 	int OnTakeDamage( int iDmg, CChar * pSrc, DAMAGE_TYPE uType = DAMAGE_HIT_BLUNT );
 
 	int Armor_GetRepairPercent() const;

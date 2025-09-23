@@ -20,7 +20,7 @@ protected:
 public:
     static const char *m_sClassName;
 
-    /** @name Constructors, Destructor, Asign operator:
+    /** @name Constructors, Destructor, Assign operator:
     */
     ///@{
 public:
@@ -63,7 +63,7 @@ public:
 
 // CSObjArray:: Modifiers.
 
-#include "../../sphere/threads.h"
+//#include "../../sphere/threads.h"
 
 template<class TYPE>
 void CSObjArray<TYPE>::DestroyElements() noexcept

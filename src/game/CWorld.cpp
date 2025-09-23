@@ -1,5 +1,6 @@
-#include "../common/CException.h"
-#include "../common/CExpression.h"
+//#include "../common/CException.h" // included in the precompiled header
+//#include "../common/CExpression.h" // included in the precompiled header
+//#include "../common/CScriptParserBufs.h" // included in the precompiled header via CExpression.h
 #include "../common/CLog.h"
 #include "../common/sphereversion.h"
 #include "../network/CClientIterator.h"
@@ -215,7 +216,6 @@ static void ReportGarbageCollection(CObjBase * pObj, int iResultCode)
 }
 
 
-
 //////////////////////////////////////////////////////////////////
 // -CWorldThread
 
@@ -424,7 +424,9 @@ void CWorldThread::ScheduleObjDeletion(CSObjContRec* obj)
         delete obj;
     }
     else
+    {
         m_ObjDelete.InsertContentTail(obj);
+    }
 }
 
 void CWorldThread::ScheduleSpecialObjDeletion(CSObjListRec* obj)
@@ -843,9 +845,11 @@ bool CWorld::SaveStage() // Save world state in stages.
 		_Ticker._TimedFunctions.r_Write(m_FileData);
 
 		m_FileData.WriteSection("GLOBALS");
-		g_Exp.m_VarGlobals.r_WritePrefix(m_FileData, nullptr);
-
-		g_Exp.m_ListGlobals.r_WriteSave(m_FileData);
+        {
+            auto gReader = g_ExprGlobals.mtEngineLockedReader();
+            gReader->m_VarGlobals.r_WritePrefix(m_FileData, nullptr);
+            gReader->m_ListGlobals.r_WriteSave(m_FileData);
+        }
 
 		const size_t iQty = g_Cfg.m_RegionDefs.size();
 		for ( size_t i = 0; i < iQty; ++i )
@@ -893,14 +897,14 @@ bool CWorld::SaveStage() // Save world state in stages.
 		llong	llTicksStart = _iSaveTimer;
 		TIME_PROFILE_END;
 
-		tchar * time = Str_GetTemp();
-		snprintf(time, Str_TempLength(), "%lld.%04lld", TIME_PROFILE_GET_HI, TIME_PROFILE_GET_LO);
+        tchar * ptcTime = Str_GetTemp();
+        snprintf(ptcTime, Str_TempLength(), "%lld.%04lld", TIME_PROFILE_GET_HI, TIME_PROFILE_GET_LO);
 
-		g_Log.Event(LOGM_SAVE, "World save completed, took %s seconds.\n", time);
+        g_Log.Event(LOGM_SAVE, "World save completed, took %s seconds.\n", ptcTime);
 
-		CScriptTriggerArgs Args;
-		Args.Init(time);
-		g_Serv.r_Call("f_onserver_save_finished", &g_Serv, &Args);
+        CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+        pScriptArgs->Init(ptcTime);
+        g_Serv.r_Call("f_onserver_save_finished", pScriptArgs, &g_Serv);
 
 		// Now clean up all the held over UIDs
 		SaveThreadClose();
@@ -1167,6 +1171,7 @@ bool CWorld::Save( bool fForceImmediate ) // Save world state
 	ADDTOCALLSTACK("CWorld::Save");
 
 	bool fSaved = false;
+    CScriptTriggerArgsPtr pScriptArgs = std::make_shared<CScriptTriggerArgs>();
 	try
 	{
 		if (!CheckAvailableSpaceForSave(false))
@@ -1174,12 +1179,13 @@ bool CWorld::Save( bool fForceImmediate ) // Save world state
 
 		//-- Ok we can start the save process, in which we eventually remove the previous saves and create the other.
 
-		CScriptTriggerArgs Args(fForceImmediate, _iSaveStage);
-		enum TRIGRET_TYPE tr;
+        pScriptArgs->Init(fForceImmediate, _iSaveStage, 0, nullptr);
+        enum TRIGRET_TYPE tr{};
 
-		if ( g_Serv.r_Call("f_onserver_save", &g_Serv, &Args, nullptr, &tr) )
+        if ( g_Serv.r_Call("f_onserver_save", pScriptArgs, &g_Serv, nullptr, &tr) )
 			if ( tr == TRIGRET_RET_TRUE )
 				return false;
+
 		//Flushing before the server should fix #2306
 		//The scripts fills the clients buffer and the server flush
 		//the data during the save.
@@ -1197,7 +1203,7 @@ bool CWorld::Save( bool fForceImmediate ) // Save world state
 #endif
 		}
 
-		fForceImmediate = (Args.m_iN1 != 0);
+        fForceImmediate = (pScriptArgs->m_iN1 != 0);
 		fSaved = SaveTry(fForceImmediate);
 	}
 	catch ( const CSError& e )
@@ -1221,8 +1227,8 @@ bool CWorld::Save( bool fForceImmediate ) // Save world state
 		GetCurrentProfileData().Count(PROFILE_STAT_FAULTS, 1);
 	}
 
-	CScriptTriggerArgs Args(fForceImmediate, _iSaveStage);
-	g_Serv.r_Call((fSaved ? "f_onserver_save_ok" : "f_onserver_save_fail"), &g_Serv, &Args);
+    pScriptArgs->Init(fForceImmediate, _iSaveStage, 0, nullptr);
+    g_Serv.r_Call((fSaved ? "f_onserver_save_ok" : "f_onserver_save_fail"), pScriptArgs, &g_Serv);
 	return fSaved;
 }
 
@@ -1254,9 +1260,9 @@ void CWorld::SaveStatics()
 			if ( !g_MapList.IsMapSupported(m) )
                 continue;
 
-			for (int s = 0, qty = _Sectors.GetSectorQty(m); s < qty; ++s)
+            for (int s = 0, qty = _Sectors.GetMapSectorData(m).iSectorQty; s < qty; ++s)
 			{
-				CSector* pSector = _Sectors.GetSector(m, s);
+                CSector* pSector = _Sectors.GetSectorByIndex(m, s);
 				if ( !pSector )
                     continue;
 
@@ -1327,7 +1333,7 @@ bool CWorld::LoadFile( lpctstr pszLoadName, bool fError ) // Load world from scr
 
 		try
 		{
-			g_Cfg.LoadResourceSection(&s);
+            g_Cfg.LoadResourceSection(&s, true); // pass true, it shouldn't really touch g_Cfg.m_ResHash
 		}
 		catch ( const CSError& e )
 		{
@@ -1464,11 +1470,11 @@ bool CWorld::LoadAll() // Load world from script
 		if (!g_MapList.IsMapSupported(m))
 			continue;
 
-		for (int s = 0, qty = _Sectors.GetSectorQty(m); s < qty; ++s)
+        for (int s = 0, qty = _Sectors.GetMapSectorData(m).iSectorQty; s < qty; ++s)
 		{
 			EXC_TRYSUB("Load");
 
-			CSector* pSector = _Sectors.GetSector(m, s);
+            CSector* pSector = _Sectors.GetSectorByIndex(m, s);
 			ASSERT(pSector);
 
             if (!pSector->IsLightOverriden())
@@ -1652,11 +1658,11 @@ void CWorld::RespawnDeadNPCs()
 		if ( !g_MapList.IsMapSupported(m) )
             continue;
 
-		for (int s = 0, qty = _Sectors.GetSectorQty(m); s < qty; ++s)
+        for (int s = 0, qty = _Sectors.GetMapSectorData(m).iSectorQty; s < qty; ++s)
 		{
 			EXC_TRY("OnSector");
 
-			CSector* pSector = _Sectors.GetSector(m, s);
+            CSector* pSector = _Sectors.GetSectorByIndex(m, s);
 			ASSERT(pSector);
 			pSector->RespawnDeadNPCs();
 
@@ -1692,11 +1698,11 @@ void CWorld::Restock()
 		if ( !g_MapList.IsMapSupported(m) )
 			continue;
 
-		for ( int s = 0, qty = _Sectors.GetSectorQty(m); s < qty; ++s )
+        for ( int s = 0, qty = _Sectors.GetMapSectorData(m).iSectorQty; s < qty; ++s )
 		{
 			EXC_TRY("OnSector");
 
-			CSector	*pSector = _Sectors.GetSector(m, s);
+            CSector	*pSector = _Sectors.GetSectorByIndex(m, s);
 			ASSERT(pSector);
 			pSector->Restock();
 
@@ -1719,9 +1725,9 @@ void CWorld::Close()
 
     {
 #if MT_ENGINES
-        std::unique_lock<std::shared_mutex> lock_su(_Ticker._ObjStatusUpdates.MT_CMUTEX);
+        std::unique_lock<std::shared_mutex> lock_su(_Ticker._vObjStatusUpdates.MT_CMUTEX);
 #endif
-		_Ticker._ObjStatusUpdates.clear();
+		_Ticker._vObjStatusUpdates.clear();
     }
 
 	m_Parties.clear();
@@ -1779,7 +1785,7 @@ void CWorld::_OnTick()
 	m_ObjDelete.ClearContainer(false);	// clean up our delete list (this DOES delete the objects, thanks to the virtual destructors).
 	m_ObjSpecialDelete.ClearContainer();
 
-	int64 iCurTime = _GameClock.GetCurrentTime().GetTimeRaw();
+    const int64 iCurTime = _GameClock.GetCurrentTime().GetTimeRaw();
 
 	EXC_SET_BLOCK("Worldsave checks");
 	// Save state checks
@@ -1824,8 +1830,10 @@ void CWorld::_OnTick()
 		{
 			EXC_SET_BLOCK("f_onserver_timer");
 			_iTimeLastCallUserFunc = iCurTime + g_Cfg._iTimerCall;
-			CScriptTriggerArgs args(g_Cfg._iTimerCallUnit ? g_Cfg._iTimerCall / (MSECS_PER_SEC) : g_Cfg._iTimerCall / (60 * MSECS_PER_SEC));
-			g_Serv.r_Call("f_onserver_timer", &g_Serv, &args);
+            CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+            pScriptArgs->m_iN1 = g_Cfg._iTimerCall /
+                (g_Cfg._iTimerCallUnit ? (MSECS_PER_SEC) : (60 * MSECS_PER_SEC));
+            g_Serv.r_Call("f_onserver_timer", pScriptArgs, &g_Serv);
 		}
 	}
 

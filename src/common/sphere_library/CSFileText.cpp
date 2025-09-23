@@ -5,7 +5,10 @@
     #include <io.h> // for _get_osfhandle (used by STDFUNC_FILENO)
 #endif
 
-// CSFileText:: Constructors, Destructor, Asign operator.
+// CSFileText:: Constructors, Destructor, Assign operator.
+
+const char*
+CSFileText::m_sClassName = "CSFileText";
 
 CSFileText::CSFileText()
 {
@@ -13,6 +16,7 @@ CSFileText::CSFileText()
 #ifdef _WIN32
     _fNoBuffer = false;
 #endif
+    _fBinaryMode = false;
 }
 
 CSFileText::~CSFileText()
@@ -28,7 +32,7 @@ bool CSFileText::_IsFileOpen() const
 }
 bool CSFileText::IsFileOpen() const
 {
-    MT_SHARED_LOCK_RETURN(_pStream != nullptr);
+    MT_SHARED_LOCK_RETURN(this, _pStream != nullptr);
 }
 
 bool CSFileText::_Open(lpctstr ptcFilename, uint uiModeFlags)
@@ -60,7 +64,7 @@ bool CSFileText::_Open(lpctstr ptcFilename, uint uiModeFlags)
 bool CSFileText::Open(lpctstr ptcFilename, uint uiModeFlags)
 {
     ADDTOCALLSTACK("CSFileText::Open");
-    MT_UNIQUE_LOCK_RETURN(CSFileText::_Open(ptcFilename, uiModeFlags));
+    MT_UNIQUE_LOCK_RETURN(this, CSFileText::_Open(ptcFilename, uiModeFlags));
 }
 
 void CSFileText::_Close()
@@ -83,7 +87,7 @@ void CSFileText::_Close()
 void CSFileText::Close()
 {
     ADDTOCALLSTACK("CSFileText::Close");
-    MT_UNIQUE_LOCK_SET;
+    MT_UNIQUE_LOCK_SET(this);
     CSFileText::_Close();
 }
 
@@ -119,7 +123,7 @@ int CSFileText::Seek( int iOffset, int iOrigin )
     // RETURN:
     //  true = success
     ADDTOCALLSTACK("CSFileText::Seek");
-    MT_UNIQUE_LOCK_RETURN(CSFileText::_Seek(iOffset, iOrigin));
+    MT_UNIQUE_LOCK_RETURN(this, CSFileText::_Seek(iOffset, iOrigin));
 }
 
 void CSFileText::_Flush() const
@@ -135,7 +139,7 @@ void CSFileText::_Flush() const
 void CSFileText::Flush() const
 {
     ADDTOCALLSTACK("CSFileText::Flush");
-    MT_UNIQUE_LOCK_SET;
+    MT_UNIQUE_LOCK_SET(this);
     CSFileText::_Flush();
 }
 
@@ -151,7 +155,7 @@ bool CSFileText::_IsEOF() const
 bool CSFileText::IsEOF() const
 {
     //ADDTOCALLSTACK("CSFileText::IsEOF");
-    MT_SHARED_LOCK_RETURN(CSFileText::_IsEOF());
+    MT_SHARED_LOCK_RETURN(this, CSFileText::_IsEOF());
 }
 
 
@@ -172,7 +176,7 @@ int CSFileText::Printf( lpctstr pFormat, ... )
     ADDTOCALLSTACK("CSFileText::Printf");
     ASSERT(pFormat);
 
-    MT_UNIQUE_LOCK_SET;
+    MT_UNIQUE_LOCK_SET(this);
 
     va_list vargs;
     va_start( vargs, pFormat );
@@ -192,7 +196,7 @@ int CSFileText::Read( void * pBuffer, int sizemax ) const
     if ( IsEOF() )
         return 0;	// LINUX will ASSERT if we read past end.
 
-    MT_UNIQUE_LOCK_SET;
+    MT_UNIQUE_LOCK_SET(this);
     size_t ret = fread( pBuffer, 1, sizemax, _pStream );
     if (ret > INT_MAX)
     {
@@ -217,7 +221,7 @@ tchar * CSFileText::_ReadString( tchar * pBuffer, int sizemax )
 tchar * CSFileText::ReadString( tchar * pBuffer, int sizemax )
 {
     ADDTOCALLSTACK("CSFileText::ReadString");
-    MT_UNIQUE_LOCK_RETURN(CSFileText::_ReadString(pBuffer, sizemax));
+    MT_UNIQUE_LOCK_RETURN(this, CSFileText::_ReadString(pBuffer, sizemax));
 }
 
 int CSFileText::_VPrintf( lpctstr pFormat, va_list args )
@@ -236,7 +240,7 @@ int CSFileText::VPrintf(lpctstr pFormat, va_list args)
     ADDTOCALLSTACK("CSFileText::VPrintf");
     ASSERT(pFormat);
 
-    MT_UNIQUE_LOCK_RETURN(CSFileText::_VPrintf(pFormat, args));
+    MT_UNIQUE_LOCK_RETURN(this, CSFileText::_VPrintf(pFormat, args));
 }
 
 bool CSFileText::_Write( const void * pData, int iLen )
@@ -266,7 +270,7 @@ bool CSFileText::Write(const void* pData, int iLen)
 {
     // RETURN: 1 = success else fail.
     ADDTOCALLSTACK("CSFileText::Write");
-    MT_UNIQUE_LOCK_RETURN(CSFileText::_Write(pData, iLen));
+    MT_UNIQUE_LOCK_RETURN(this, CSFileText::_Write(pData, iLen));
 }
 
 bool CSFileText::_WriteString( lpctstr pStr )
@@ -281,7 +285,7 @@ bool CSFileText::_WriteString( lpctstr pStr )
 bool CSFileText::WriteString(lpctstr pStr)
 {
     ADDTOCALLSTACK("CSFileText::WriteString");
-    MT_UNIQUE_LOCK_RETURN(CSFileText::_WriteString(pStr));
+    MT_UNIQUE_LOCK_RETURN(this, CSFileText::_WriteString(pStr));
 }
 
 // CSFileText:: Mode operations.
@@ -291,7 +295,7 @@ lpctstr CSFileText::_GetModeStr() const
     ADDTOCALLSTACK("CSFileText::_GetModeStr");
     // end of line translation is crap. ftell and fseek don't work correctly when you use it.
     // fopen() args
-    if ( IsBinaryMode())
+    if ( _IsBinaryMode())
         return ( _IsWriteMode() ? "wb" : "rb" );
     if ( _GetMode() & OF_READWRITE )
         return "a+b";

@@ -15,10 +15,10 @@
 	#include "../network/linuxev.h"
 #endif
 
-#include "../common/sphere_library/CSRand.h"
 #include "../common/CLog.h"
-#include "../common/CException.h"
-#include "../common/CExpression.h"
+#include "../common/CScriptParserBufs.h"
+//#include "../common/CException.h" // included in the precompiled header
+//#include "../common/CExpression.h" // included in the precompiled header
 #include "../common/CUOInstall.h"
 #include "../common/sphereversion.h"
 #include "../network/CNetworkManager.h"
@@ -32,6 +32,11 @@
 #include "spheresvr.h"
 #include <sstream>
 #include <cstdlib>
+
+#ifdef UNIT_TESTING
+#   define DOCTEST_CONFIG_IMPLEMENT
+#   include <doctest/doctest.h>
+#endif
 
 
 // Dynamic allocation of some global stuff
@@ -65,9 +70,18 @@ GlobalInitializer::GlobalInitializer()
 */
     PeriodicSyncTimeConstants();
 
+
 //--- Sphere threading system
 
 	DummySphereThread::createInstance();
+
+    {
+        // Ensure i have this to have context for ADDTOCALLSTACK and other operations.
+        const AbstractThread* curthread = ThreadHolder::get().current();
+        ASSERT(curthread != nullptr);
+        ASSERT(dynamic_cast<DummySphereThread const *>(curthread));
+        UnreferencedParameter(curthread);
+    }
 
 //--- Exception handling
 
@@ -119,7 +133,12 @@ void GlobalInitializer::PeriodicSyncTimeConstants() // static
 
 /* Start global declarations */
 
+// NOLINTNEXTLINE(clazy-non-pod-global-static)
 static GlobalInitializer g_GlobalInitializer;
+
+extern CScriptParserBufs g_ScriptParserBuffers;
+CScriptParserBufs g_ScriptParserBuffers;
+
 
 #ifdef _WIN32
 CNTWindow g_NTWindow;
@@ -150,19 +169,25 @@ CWorld			g_World;			// the world. (we save this stuff)
 #endif
 	CNetworkManager g_NetworkManager;
 
-
 // Again, game servers stuff.
 CUOInstall		g_Install;
 CVerDataMul		g_VerData;
-CSRand          g_Rand;
-CExpression		g_Exp;				// Global script variables.
+sl::GuardedAccess<CExprGlobals>     // TODO: put inside GuardedAccess also g_Cfg, and slowly also the other stuff?
+    g_ExprGlobals;                  // Global script variables.
 CSStringList	g_AutoComplete;		// auto-complete list
 CScriptProfiler g_profiler;			// script profiler
 CUOMapList		g_MapList;			// global maps information
 
+
+//-- Threads.
+
+// NOLINTNEXTLINE(clazy-non-pod-global-static)
 static MainThread g_Main;
+
+// NOLINTNEXTLINE(clazy-non-pod-global-static)
 static PingServer g_PingServer;
 
+CDataBaseAsyncHelper g_asyncHdb;
 
 
 //*******************************************************************
@@ -252,8 +277,8 @@ int Sphere_InitServer( int argc, char *argv[] )
 
 	if ( argc > 1 )
 	{
-		EXC_SET_BLOCK("cmdline");
-		if ( !g_Serv.CommandLine(argc, argv) )
+        EXC_SET_BLOCK("cmdline post-init");
+        if ( !g_Serv.CommandLinePostLoad(argc, argv) )
 			return -1;
 	}
 
@@ -319,7 +344,7 @@ int Sphere_InitServer( int argc, char *argv[] )
 
 
 	// Trigger server start
-	g_Serv.r_Call("f_onserver_start", &g_Serv, nullptr);
+    g_Serv.r_Call("f_onserver_start", CScriptTriggerArgsPtr{}, &g_Serv);
 	return g_Serv.GetExitFlag();
 
 	EXC_CATCH;
@@ -333,7 +358,7 @@ int Sphere_InitServer( int argc, char *argv[] )
 void Sphere_ExitServer()
 {
 	// Trigger server quit
-	g_Serv.r_Call("f_onserver_exit", &g_Serv, nullptr);
+    g_Serv.r_Call("f_onserver_exit", CScriptTriggerArgsPtr{}, &g_Serv);
 
 	g_Serv.SetServerMode(SERVMODE_Exiting);
 
@@ -452,8 +477,8 @@ static void Sphere_MainMonitorLoop()
 		if ( g_Serv.IsLoading() || ! g_Cfg.m_fSecure || g_Serv.IsValidBusy() )
 			continue;
 
-		EXC_SET_BLOCK("Check Stuck");
 #ifndef _DEBUG
+		EXC_SET_BLOCK("Check Stuck");
 		if (g_Main.checkStuck() == true)
 			g_Log.Event(LOGL_CRIT, "'%s' thread hang, restarting...\n", g_Main.getName());
 #endif
@@ -468,6 +493,19 @@ void atexit_handler()
 	ThreadHolder::get().markThreadsClosing();
 }
 
+#ifdef UNIT_TESTING
+static int DocTestMain()
+{
+    doctest::Context context;
+
+    int res = context.run(); // run
+
+    if(context.shouldExit()) // important - query flags (and --exit) rely on the user doing this
+        return res;          // propagate the result of the tests
+
+    return res;
+}
+#endif
 
 #ifdef _WIN32
 int Sphere_MainEntryPoint( int argc, char *argv[] )
@@ -475,31 +513,60 @@ int Sphere_MainEntryPoint( int argc, char *argv[] )
 int main( int argc, char * argv[] )
 #endif
 {
-	static constexpr lpctstr m_sClassName = "main";
-	EXC_TRY("MAIN");
+#ifdef UNIT_TESTING
+    return DocTestMain();
+#endif
+
+    static constexpr lpctstr m_sClassName = "main";
+    EXC_TRY("MAIN");
 
     const int atexit_handler_result = std::atexit(atexit_handler); // Handler will be called
-	if (atexit_handler_result != 0)
-	{
-		g_Log.Event(LOGL_CRIT, "atexit handler registration failed.\n");
-		goto exit_server;
-	}
-
-	{
-        // Ensure i have this to have context for ADDTOCALLSTACK and other operations.
-        const AbstractThread* curthread = ThreadHolder::get().current();
-        ASSERT(curthread != nullptr);
-        ASSERT(dynamic_cast<DummySphereThread const *>(curthread));
-        (void)curthread;
+    if (atexit_handler_result != 0)
+    {
+        g_Log.Event(LOGL_CRIT, "atexit handler registration failed.\n");
+        goto exit_server;
     }
 
 #ifndef _WIN32
     AbstractThread::setThreadName("T_SphereStartup");
-
     g_UnixTerminal.start();
+#endif
 
+    if ( argc > 1 )
+    {
+        EXC_SET_BLOCK("cmdline pre-init");
+        if ( !g_Serv.CommandLinePreLoad(argc, argv) )
+        {
+#ifndef _WIN32
+            g_UnixTerminal.waitForClose();
+#endif
+            return 0;
+        }
+    }
+
+#ifndef _WIN32
     // We need to find out the log files folder... look it up in the .ini file (on Windows it's done in WinMain function).
     g_Serv.SetServerMode(SERVMODE_PreLoadingINI);
+
+    // Parse command line arguments.
+    for (int argn = 1; argn < argc; ++argn)
+    {
+        const tchar * cliArg = argv[argn];
+        if (! _IS_SWITCH(cliArg[0]))
+        {
+            continue;
+        }
+
+        ++cliArg;
+
+        // Check if we are changing ini path.
+        if (toupper(cliArg[0]) == 'I')
+        {
+            // Define path to ini files.
+            g_Cfg.SetIniDirectory(cliArg + 2);
+        }
+    }
+
     g_Cfg.LoadIni(false);
 #endif
 

@@ -21,6 +21,10 @@ on:
 jobs:
   macos-x86_64:
     runs-on: macos-13   # intel
+    permissions:
+      contents: read
+      actions: read
+
     env:
       CMAKE_GEN: Ninja
       CMAKE_TCH: cmake/toolchains/OSX-AppleClang-x86_64.cmake
@@ -37,10 +41,11 @@ jobs:
             echo && echo "** Setting up compiler" && echo
             export HOMEBREW_NO_AUTO_UPDATE=1
             export HOMEBREW_NO_INSTALL_CLEANUP=1
-            brew install ninja mariadb-connector-c
+            brew install mariadb-connector-c
     - name: Report building tools
       run:  |
             echo "Apple Clang:" && clang --version
+            echo "Default Linker:" && ld -v
             echo && echo "CMake:" && cmake --version
             echo && echo "Ninja:" && ninja --version
 
@@ -49,7 +54,7 @@ jobs:
             mkdir -p build
             cmake -G "Ninja" -DCMAKE_BUILD_TYPE="Nightly" -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TCH" -S . -B ./build
     - name: Ninja
-      run: cd build && ninja && cd ..
+      run: ninja -C build -v
     - name: Create package
       run:  |
             pwd
@@ -69,6 +74,10 @@ jobs:
 
   upload_github_release:
     needs: macos-x86_64
+    permissions:
+      contents: read
+      actions: write
+
     # Upload artifact linked to GitHub RELEASE we are creating - only if the run is for a pull request, or for selected branches
     if: contains(fromJson('["master", "main"]'), github.ref_name)
 

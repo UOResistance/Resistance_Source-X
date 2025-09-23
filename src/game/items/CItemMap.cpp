@@ -1,6 +1,6 @@
 
-#include "../../common/CException.h"
-#include "../../common/CExpression.h"
+//#include "../../common/CException.h" // included in the precompiled header
+//#include "../../common/CExpression.h" // included in the precompiled header
 #include "CItemMap.h"
 
 /////////////////////////////////////////////////////////////////////////////
@@ -13,10 +13,14 @@ CItemMap::CItemMap( ITEMID_TYPE id, CItemBase * pItemDef ) :
     m_fPlotMode = false;
 }
 
+/*
 CItemMap::~CItemMap()
 {
-    DeletePrepare();	// Must remove early because virtuals will fail in child destructor.
+    // CItemVendable::DeletePrepare is called in ~CItemVendable().
+    // We would have to call here DeletePrepare if this class had a own DeletePrepare method.
+    DeletePrepare();        //  Must remove early because virtuals will fail in child destructor.
 }
+*/
 
 bool CItemMap::IsSameType(const CObjBase *pObj) const
 {

@@ -1,9 +1,10 @@
 #include "../common/sphere_library/CSRand.h"
 #include "../common/resource/CResourceLock.h"
-#include "../common/CException.h"
-#include "../common/CExpression.h"
-#include "../common/sphereversion.h"
+//#include "../common/CException.h" // included in the precompiled header
+//#include "../common/CExpression.h" // included in the precompiled header
+//#include "../common/CScriptParserBufs.h" // included in the precompiled header via CExpression.h
 #include "../common/CLog.h"
+#include "../common/sphereversion.h"
 #include "../network/CClientIterator.h"
 #include "../network/send.h"
 #include "../sphere/ProfileTask.h"
@@ -92,7 +93,8 @@ static bool GetDeltaStr( CPointMap & pt, tchar * pszDir )
 // -CObjBase stuff
 // Either a player, npc or item.
 
-CObjBase::CObjBase( bool fItem )  // PROFILE_TIME_QTY is unused, CObjBase is not a real CTimedObject, it just needs its virtual inheritance.
+CObjBase::CObjBase( bool fItem ) :
+    _sRunningTrigger(false)
 {
 	++ sm_iCount;
 
@@ -101,7 +103,10 @@ CObjBase::CObjBase( bool fItem )  // PROFILE_TIME_QTY is unused, CObjBase is not
 	_iCreatedResScriptIdx	= _iCreatedResScriptLine	= -1;
     _iRunningTriggerId		= _iCallingObjTriggerId		= -1;
 
-	m_iTimeStampS = 0;
+    _fIsInStatusUpdatesList = false;
+    _fIsInStatusUpdatesAddList = false;
+
+    m_iTimeStampS = 0;
 	m_CanMask = 0;
 
 	m_attackBase = m_attackRange = 0;
@@ -136,8 +141,9 @@ CObjBase::CObjBase( bool fItem )  // PROFILE_TIME_QTY is unused, CObjBase is not
 
 CObjBase::~CObjBase()
 {
+    ADDTOCALLSTACK("CObjBase::~CObjBase");
+
 	EXC_TRY("Cleanup in destructor");
-	ADDTOCALLSTACK("CObjBase::~CObjBase");
     if (CCSpawn *pSpawn = GetSpawn())    // If I was created from a Spawn
     {
 		CItem* pSpawnLink = pSpawn->GetLink();
@@ -240,6 +246,7 @@ void CObjBase::DeleteCleanup(bool fForce)
 bool CObjBase::Delete(bool fForce)
 {
 	ADDTOCALLSTACK("CObjBase::Delete");
+    EXC_TRY("Cleanup in Delete method");
 
     bool fScheduleDeletion = true;
     const SERVMODE_TYPE servMode = g_Serv.GetServerMode();
@@ -260,13 +267,17 @@ bool CObjBase::Delete(bool fForce)
     }
 
 	DeletePrepare();           // virtual, but if called by the destructor this will fail to call upper (CChar, CItem, etc) virtual methods.
-    DeleteCleanup(fForce);     // not virtual!
+    DeleteCleanup(fForce);    // not virtual!
 
-    if (fScheduleDeletion) {
+    if (fScheduleDeletion)
+    {
         g_World.ScheduleObjDeletion(this);
     }
 
 	return true;
+
+    EXC_CATCH;
+    return false;
 }
 
 CBaseBaseDef* CObjBase::Base_GetDef() const noexcept
@@ -330,18 +341,19 @@ void CObjBase::SetHue( HUE_TYPE wHue, bool fAvoidTrigger, CTextConsole *pSrc, CO
         lpctstr ptcTrig = (IsChar() ? CChar::sm_szTrigName[CTRIG_DYE] : CItem::sm_szTrigName[ITRIG_DYE]);
 		if (IsTrigUsed(ptcTrig))
 		{
-			CScriptTriggerArgs args(wHue, iSound, pSourceObj);
-			TRIGRET_TYPE iRet = OnTrigger(ptcTrig, pSrc, &args);
+            CScriptTriggerArgsPtr pArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+            pArgs->Init(wHue, iSound, 0, pSourceObj);
+            TRIGRET_TYPE iRet = OnTrigger(ptcTrig, pArgs, pSrc);
 
 			if (iRet == TRIGRET_RET_TRUE)
 				return;
 
-			if (args.m_iN2 > 0) // No sound? No checks for who can hear, packets...
+            if (pArgs->m_iN2 > 0) // No sound? No checks for who can hear, packets...
 			{
-				Sound((SOUND_TYPE)(args.m_iN2));
+                Sound((SOUND_TYPE)(pArgs->m_iN2));
 			}
 
-			m_wHue = (HUE_TYPE)(args.m_iN1);
+            m_wHue = (HUE_TYPE)(pArgs->m_iN1);
 			return;
 		}
 	}
@@ -794,7 +806,9 @@ bool CObjBase::MoveNear(CPointMap pt, ushort iSteps )
 	return MoveTo(pt);
 }
 
-void CObjBase::UpdateObjMessage( lpctstr pTextThem, lpctstr pTextYou, CClient * pClientExclude, HUE_TYPE wHue, TALKMODE_TYPE mode, FONT_TYPE font, bool fUnicode ) const
+void CObjBase::UpdateObjMessage(
+    lpctstr pTextThem, lpctstr pTextYou, CClient * pClientExclude,
+    HUE_TYPE wHue, TALKMODE_TYPE iMode, FONT_TYPE iFont, bool fUnicode ) const
 {
 	ADDTOCALLSTACK("CObjBase::UpdateObjMessage");
 	// Show everyone a msg coming from this object.
@@ -808,9 +822,9 @@ void CObjBase::UpdateObjMessage( lpctstr pTextThem, lpctstr pTextYou, CClient * 
 			continue;
 
 		if (( pClient->GetChar() == this ) && pTextYou != nullptr )
-			pClient->addBarkParse(pTextYou, this, wHue, mode, font, fUnicode );
+            pClient->addBarkParse(pTextYou, this, wHue, iMode, iFont, fUnicode );
 		else if (( pClient->GetChar() != this ) && pTextThem != nullptr )
-			pClient->addBarkParse(pTextThem, this, wHue, mode, font, fUnicode );
+            pClient->addBarkParse(pTextThem, this, wHue, iMode, iFont, fUnicode );
 
 		//pClient->addBarkParse(( pClient->GetChar() == this )? pTextYou : pTextThem, this, wHue, mode, font, bUnicode );
 	}
@@ -833,7 +847,7 @@ void CObjBase::UpdateCanSee(PacketSend *packet, CClient *exclude) const
 	delete packet;
 }
 
-TRIGRET_TYPE CObjBase::OnHearTrigger( CResourceLock & s, lpctstr pszCmd, CChar * pSrc, TALKMODE_TYPE & mode, HUE_TYPE wHue)
+TRIGRET_TYPE CObjBase::OnHearTrigger( CResourceLock & s, lpctstr pszCmd, CChar * pSrc, TALKMODE_TYPE & iModeRef, HUE_TYPE wHue)
 {
 	ADDTOCALLSTACK("CObjBase::OnHearTrigger");
 	// Check all the keys in this script section.
@@ -841,8 +855,8 @@ TRIGRET_TYPE CObjBase::OnHearTrigger( CResourceLock & s, lpctstr pszCmd, CChar *
 	// RETURN:
 	//  TRIGRET_ENDIF = no match.
 	//  TRIGRET_DEFAULT = found match but it had no RETURN
-    std::unique_ptr<CScriptTriggerArgs> Args;
 	bool fMatch = false;
+    CScriptTriggerArgsPtr pArgs;
 
 	while ( s.ReadKeyParse())
 	{
@@ -859,22 +873,18 @@ TRIGRET_TYPE CObjBase::OnHearTrigger( CResourceLock & s, lpctstr pszCmd, CChar *
 		if ( ! fMatch )
 			continue;	// look for the next "ON" section.
 
-        if (!Args)
-        {
-            // Allocate when needed
-            Args = std::make_unique<CScriptTriggerArgs>(pszCmd);
-            Args->m_iN1 = mode;
-            Args->m_iN2 = wHue;
-        }
-		TRIGRET_TYPE iRet = CObjBase::OnTriggerRunVal( s, TRIGRUN_SECTION_EXEC, pSrc, Args.get() );
+        pArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+        pArgs->m_iN1 = iModeRef;
+        pArgs->m_iN2 = wHue;
+        TRIGRET_TYPE iRet = CObjBase::OnTriggerRunVal( s, TRIGRUN_SECTION_EXEC, pArgs, pSrc );
 		if ( iRet != TRIGRET_RET_FALSE )
 			return iRet;
 
 		fMatch = false;
 	}
 
-    if (Args)
-	    mode = TALKMODE_TYPE(Args->m_iN1);
+    if (pArgs)
+        iModeRef = TALKMODE_TYPE(pArgs->m_iN1);
 	return TRIGRET_ENDIF;	// continue looking.
 }
 
@@ -975,8 +985,9 @@ bool CObjBase::r_WriteVal( lpctstr ptcKey, CSString &sVal, CTextConsole * pSrc, 
                 SKIP_SEPARATORS(pszArgs);
             }
 
-            CScriptTriggerArgs Args( pszArgs != nullptr ? pszArgs : "" );
-            if (r_Call(uiFunctionIndex, pSrc, &Args, &sVal))
+            CScriptTriggerArgsPtr pArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+            pArgs->Init(pszArgs != nullptr ? pszArgs : "");
+            if (r_Call(uiFunctionIndex, pArgs, pSrc, &sVal))
             {
                 return true;
             }
@@ -2094,8 +2105,9 @@ bool CObjBase::r_Verb( CScript & s, CTextConsole * pSrc ) // Execute command fro
         {
             // RES_FUNCTION call
             CSString sVal;
-            CScriptTriggerArgs Args( s.GetArgRaw() );
-            if ( r_Call( uiFunctionIndex, pSrc, &Args, &sVal ) )
+            CScriptTriggerArgsPtr pArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+            pArgs->Init( s.GetArgRaw() );
+            if ( r_Call( uiFunctionIndex, pArgs, pSrc, &sVal ) )
                 return true;
         }
 
@@ -2445,7 +2457,7 @@ bool CObjBase::r_Verb( CScript & s, CTextConsole * pSrc ) // Execute command fro
         {
 			EXC_SET_BLOCK("P or MOVETO");
 			// The "@Click" trigger str should be the same between items and chars...
-			if (0 == _sRunningTrigger.compare(CChar::sm_szTrigName[CTRIG_Click]))
+            if (0 == _sRunningTrigger.Compare(CChar::sm_szTrigName[CTRIG_Click]))
 			{
 				g_Log.EventError("Can't set P in the current trigger. It would cause an infinite loop.\n");
 				return false;
@@ -2794,8 +2806,13 @@ bool CObjBase::r_Verb( CScript & s, CTextConsole * pSrc ) // Execute command fro
 					if ( pCharSrc && (( itGumpFound != pClientSrc->m_mapOpenedGumps.end() ) && ( (*itGumpFound).second > 0 )) )
 						break;
 				}
-				pClientSrc->Dialog_Setup( CLIMODE_DIALOG, g_Cfg.ResourceGetIDType( RES_DIALOG, Arg_ppCmd[0] ),
-					iQty > 1 ? Exp_GetVal( Arg_ppCmd[1]) : 0, this, Arg_ppCmd[2] );
+                pClientSrc->Dialog_Setup(
+                    CLIMODE_DIALOG, // Dialog mode
+                    g_Cfg.ResourceGetIDType( RES_DIALOG, Arg_ppCmd[0] ), // Dialog resource id
+                    ((iQty > 1) ? Exp_GetVal(Arg_ppCmd[1]) : 0),    // page
+                    this,   // SRC obj
+                    Arg_ppCmd[2]    // arguments, can be empty (nullptr)
+                    );
 			}
 			break;
 		case OV_DIALOGCLOSE:
@@ -2947,6 +2964,7 @@ bool CObjBase::r_Verb( CScript & s, CTextConsole * pSrc ) // Execute command fro
 			EXC_SET_BLOCK("DCLICK");
 			if (!pCharSrc)
 				return false;
+
 			if (s.HasArgs())
 			{
 				if (!IsChar())
@@ -2971,12 +2989,11 @@ bool CObjBase::r_Verb( CScript & s, CTextConsole * pSrc ) // Execute command fro
 				if (!IsChar())
 					return false;
 
-				CObjBase* pObj = CUID::ObjFindFromUID(s.GetArgDWVal());
-				if (!pObj)
+                CChar* pChar = CUID::CharFindFromUID(s.GetArgDWVal());
+                if (!pChar)
 					return false;
 
-				CChar *pChar = static_cast <CChar *> (this);
-				return pChar->Use_Obj( pObj, false, true );
+                return pChar->Use_Obj( pChar, false, true );
 			}
 			else
 				return pCharSrc->Use_Obj( this, false, true );
@@ -3148,7 +3165,7 @@ void CObjBase::UpdatePropertyFlag()
     m_fStatusUpdate |= SU_UPDATE_TOOLTIP;
 
 	// Items equipped, inside containers or with timer expired doesn't receive ticks and need to be added to a list of items to be processed separately
-    if (!IsTopLevel() || _IsTimerExpired())
+    if (!IsStatusUpdatePending() && (!IsTopLevel() || _IsTimerExpired()))
 	{
 		CWorldTickingList::AddObjStatusUpdate(this, false);
     }
@@ -3157,6 +3174,12 @@ void CObjBase::UpdatePropertyFlag()
 dword CObjBase::GetPropertyHash() const
 {
 	return m_PropertyHash;
+}
+
+
+bool CObjBase::IsStatusUpdatePending() const
+{
+    return _fIsInStatusUpdatesList || _fIsInStatusUpdatesAddList;
 }
 
 void CObjBase::OnTickStatusUpdate()
@@ -3196,58 +3219,100 @@ void CObjBase::_GoAwake()
 void CObjBase::_GoSleep()
 {
 	ADDTOCALLSTACK("CObjBase::_GoSleep");
+
 	CTimedObject::_GoSleep();
 
-	if (_IsTimerSet())
+    if (IsTimeoutTickingActive())
 	{
-		CWorldTickingList::DelObjSingle(this);
-	}
+        const bool fDel = CWorldTickingList::DelObjSingle(this);
+        ASSERT(fDel);
+        UnreferencedParameter(fDel);
+    }
+/*
+#ifdef _DEBUG
+        const std::optional<std::pair<int64, CTimedObject*>> optPairRes = CWorldTickingList::IsTimeoutRegistered(this);
+        if (optPairRes.has_value())
+        {
+            g_Log.EventError("CObjBase [defname='%s', cur timer adj=%" PRId64 ", cur timer raw=%" PRId64 ", timeout=%" PRId64 "]"
+                             " expected to have been removed from the Ticking List, but it's still there!.\n",
+                GetResourceName(), _GetTimerAdjusted(), _GetTimeoutRaw(), optPairRes.value().first);
+            ASSERT(false);
+        }
+#endif
+    }
+#ifdef _DEBUG
+    else
+    {
+        const std::optional<std::pair<int64, CTimedObject*>> optPairRes = CWorldTickingList::IsTimeoutRegistered(this);
+        ASSERT(optPairRes.has_value() == false);
+        //UnreferencedParameter(optPairRes);
+    }
+#endif
+*/
+    if (IsStatusUpdatePending())
+    {
+        const bool fDel = CWorldTickingList::DelObjStatusUpdate(this, false);
+        ASSERT(fDel);
+        UnreferencedParameter(fDel);
+    }
+/*
+#ifdef _DEBUG
+        const bool fRes = CWorldTickingList::IsStatusUpdateTickRegistered(this);
+        ASSERT(!fRes);
+        //UnreferencedParameter(fRes);
+#endif
+    }
+#ifdef _DEBUG
+    else
+    {
+        const bool fRes = CWorldTickingList::IsStatusUpdateTickRegistered(this);
+        ASSERT(!fRes);
+        //UnreferencedParameter(fRes);
+    }
+#endif
+*/
+}
 
-    // Most objects won't be into the status update list, but we have to check anyways.
-	CWorldTickingList::DelObjStatusUpdate(this, false);
+bool CObjBase::_TickableState() const
+{
+	//ADDTOCALLSTACK_DEBUG("CObjBase::_CanTick");   // Called very frequently.
+	// This doesn't check the sector sleeping status, it's only about this object.
+    //EXC_TRY("Able to tick?");
+
+    // Directly call the method specifying the belonging class, to avoid the overhead of vtable lookup under the hood.
+    return !CTimedObject::_IsSleeping();
+
+    //EXC_CATCH;
+    return false;
+}
+
+std::optional<bool> CObjBase::_TickableStateOverride() const
+{
+    if (Can(CAN_O_NOSLEEP))
+    {
+        // CAN_O_NOSLEEP items should not be put to sleep by the source.
+        // SECF_NoSleep is a property of the sector, not of the item, so it's managed in the sector code.
+        return true; // Override: i should never sleep.
+    }
+    // No override. Do the default thing.
+    return std::nullopt;
 }
 
 bool CObjBase::_CanTick(bool fParentGoingToSleep) const
 {
-	//ADDTOCALLSTACK_DEBUG("CObjBase::_CanTick");   // Called very frequently.
-	// This doesn't check the sector sleeping status, it's only about this object.
     EXC_TRY("Can tick?");
 
-    // Directly call the method specifying the belonging class, to avoid the overhead of vtable lookup under the hood.
-    bool fCanTick = fParentGoingToSleep ? false : !CTimedObject::_IsSleeping();
-    const bool fIgnoreCont = (HAS_FLAGS_STRICT(g_Cfg.m_uiItemTimers, ITEM_CANTIMER_IN_CONTAINER) || Can(CAN_I_TIMER_CONTAINED));
+    const bool fTickable = _TickableState();
+    const std::optional<bool> fOverriding = _TickableStateOverride();
+    if (fParentGoingToSleep && (!fTickable || !fOverriding.value_or(false)))
+        return false;
 
-    if (fCanTick)
-    {
-        if (const CSObjCont* pParent = GetParent())
-        {
-            const CObjBase* pObjParent = dynamic_cast<const CObjBase*>(pParent);
-            // The parent can be another CObjBase (or a Sector, but we are not interested in that case)
-			if (pObjParent)
-			{
-				if (fParentGoingToSleep)
-					fCanTick = false;
-				else if (!fIgnoreCont)
-					fCanTick = pObjParent->CanTick(fParentGoingToSleep);
-			}
-        }
-    }
-
-    if (!fCanTick)
-    {
-        // Try to call the Can method the less often possible.
-		//
-		// This should happen only if the item was manually put to sleep.
-		// CAN_O_NOSLEEP items should not be put to sleep by the source.
-	    fCanTick = Can(CAN_O_NOSLEEP);
-    }
-
-    return fCanTick;
+    return fTickable;
 
     EXC_CATCH;
-
     return false;
 }
+
 
 void CObjBase::ResendTooltip(bool fSendFull, bool fUseCache)
 {
@@ -3433,6 +3498,7 @@ void CObjBase::ModPropNum( COMPPROPS_TYPE iCompPropsType, CComponentProps::Prope
     {
         const CBaseBaseDef* pBase = Base_GetDef();
         const CComponentProps* pBaseCompProps = pBase->GetComponentProps(iCompPropsType);
+        ASSERT(pBaseCompProps);
         pBaseCompProps->GetPropertyNumPtr(iPropIndex, &iVal);
     }
     if (!iVal && !iMod)
@@ -3579,7 +3645,7 @@ void CObjBase::DupeCopy( const CObjBase * pObj )
     CEntityProps::Copy(pObj);
 }
 
-TRIGRET_TYPE CObjBase::Spell_OnTrigger( SPELL_TYPE spell, SPTRIG_TYPE stage, CChar * pSrc, CScriptTriggerArgs * pArgs )
+TRIGRET_TYPE CObjBase::Spell_OnTrigger( SPELL_TYPE spell, SPTRIG_TYPE stage, CScriptTriggerArgsPtr pArgs, CChar * pSrc )
 {
 	ADDTOCALLSTACK("CObjBase::Spell_OnTrigger");
 	CSpellDef * pSpellDef = g_Cfg.GetSpellDef( spell );
@@ -3592,7 +3658,7 @@ TRIGRET_TYPE CObjBase::Spell_OnTrigger( SPELL_TYPE spell, SPTRIG_TYPE stage, CCh
 		CResourceLock s;
 		if ( pSpellDef->ResourceLock( s ))
 		{
-			return CScriptObj::OnTriggerScript( s, CSpellDef::sm_szTrigName[stage], pSrc, pArgs );
+            return CScriptObj::OnTriggerScript( s, CSpellDef::sm_szTrigName[stage], std::move(pArgs), pSrc );
 		}
 	}
 	return TRIGRET_RET_DEFAULT;
@@ -3600,7 +3666,7 @@ TRIGRET_TYPE CObjBase::Spell_OnTrigger( SPELL_TYPE spell, SPTRIG_TYPE stage, CCh
 
 bool CObjBase::IsRunningTrigger() const
 {
-	return ((_iRunningTriggerId >= 0) || !_sRunningTrigger.empty());
+    return ((_iRunningTriggerId >= 0) || !_sRunningTrigger.IsEmpty());
 }
 
 bool CObjBase::CallPersonalTrigger(tchar * pArgs, CTextConsole * pSrc, TRIGRET_TYPE & trResult)
@@ -3612,7 +3678,7 @@ bool CObjBase::CallPersonalTrigger(tchar * pArgs, CTextConsole * pSrc, TRIGRET_T
 	if ( iResultArgs > 0 )
 	{
 		lpctstr callTrigger = ppCmdTrigger[0];
-		CScriptTriggerArgs csTriggerArgs;
+        CScriptTriggerArgsPtr pTriggerArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();;
 
 		if ( iResultArgs == 3 )
 		{
@@ -3624,25 +3690,25 @@ bool CObjBase::CallPersonalTrigger(tchar * pArgs, CTextConsole * pSrc, TRIGRET_T
 				iResultArgs = Str_ParseCmds(ppCmdTrigger[2], Arg_piCmd, ARRAY_COUNT(Arg_piCmd), ",");
 
 				if ( iResultArgs == 3 )
-					csTriggerArgs.m_iN3 = Arg_piCmd[2];
+                    pTriggerArgs->m_iN3 = Arg_piCmd[2];
 
 				if ( iResultArgs >= 2 )
-					csTriggerArgs.m_iN2 = Arg_piCmd[1];
+                    pTriggerArgs->m_iN2 = Arg_piCmd[1];
 
 				if ( iResultArgs >= 1 )
-					csTriggerArgs.m_iN1 = Arg_piCmd[0];
+                    pTriggerArgs->m_iN1 = Arg_piCmd[0];
 			}
 			else if ( iTriggerArgType == 2 ) // ARGS
 			{
-				csTriggerArgs.m_s1 = ppCmdTrigger[2];
-				csTriggerArgs.m_s1_buf_vec = ppCmdTrigger[2];
+                pTriggerArgs->m_s1 = ppCmdTrigger[2];
+                pTriggerArgs->m_s1_buf_vec = ppCmdTrigger[2];
 			}
 			else if ( iTriggerArgType == 3 ) // ARGO
 			{
 				CUID guTriggerArg(Exp_GetVal(ppCmdTrigger[2]));
 				CObjBase * pTriggerArgObj = guTriggerArg.ObjFind();
 				if ( pTriggerArgObj )
-					csTriggerArgs.m_pO1 = pTriggerArgObj;
+                    pTriggerArgs->m_pO1 = pTriggerArgObj;
 			}
 			else if ( iTriggerArgType == 4 ) // FULLTRIGGER
 			{
@@ -3652,27 +3718,27 @@ bool CObjBase::CallPersonalTrigger(tchar * pArgs, CTextConsole * pSrc, TRIGRET_T
 				// ARGS
 				if ( iResultArgs == 5 )
 				{
-					csTriggerArgs.m_s1 = Arg_ppCmd[4];
-					csTriggerArgs.m_s1_buf_vec = Arg_ppCmd[4];
+                    pTriggerArgs->m_s1 = Arg_ppCmd[4];
+                    pTriggerArgs->m_s1_buf_vec = Arg_ppCmd[4];
 				}
 				// ARGNs
 				if ( iResultArgs >= 4 )
-					csTriggerArgs.m_iN3 = Exp_GetVal(Arg_ppCmd[3]);
+                    pTriggerArgs->m_iN3 = Exp_GetVal(Arg_ppCmd[3]);
 				if ( iResultArgs >= 3 )
-					csTriggerArgs.m_iN2 = Exp_GetVal(Arg_ppCmd[2]);
+                    pTriggerArgs->m_iN2 = Exp_GetVal(Arg_ppCmd[2]);
 				if ( iResultArgs >= 2 )
-					csTriggerArgs.m_iN1 = Exp_GetVal(Arg_ppCmd[1]);
+                    pTriggerArgs->m_iN1 = Exp_GetVal(Arg_ppCmd[1]);
 				// ARGO
 				if ( iResultArgs >= 1 )
 				{
 					CObjBase * pTriggerArgObj = CUID::ObjFindFromUID(Exp_GetVal(Arg_ppCmd[0]));
 					if ( pTriggerArgObj )
-						csTriggerArgs.m_pO1 = pTriggerArgObj;
+                        pTriggerArgs->m_pO1 = pTriggerArgObj;
 				}
 			}
 		}
 
-		trResult = OnTrigger(callTrigger, pSrc, &csTriggerArgs);
+        trResult = OnTrigger(callTrigger, pTriggerArgs, pSrc);
 		return true;
 	}
 

@@ -1,4 +1,6 @@
-#include "../../common/CExpression.h"
+//#include "../../common/CExpression.h" // included in the precompiled header
+//#include "../../common/CScriptParserBufs.h" // included in the precompiled header via CExpression.h
+#include "../../network/send.h"
 #include "../chars/CChar.h"
 #include "../chars/CCharNPC.h"
 #include "../clients/CClientTooltip.h"
@@ -98,9 +100,10 @@ bool CClient::addAOSTooltip(CObjBase * pObj, bool fRequested, bool fShop)
 
 			if (IsTrigUsed(TRIGGER_CLIENTTOOLTIP) || (pItem && IsTrigUsed(TRIGGER_ITEMCLIENTTOOLTIP)) || (pChar && IsTrigUsed(TRIGGER_CHARCLIENTTOOLTIP)))
 			{
-				CScriptTriggerArgs args(pObj);
-				args.m_iN1 = fRequested;
-				iRet = pObj->OnTrigger("@ClientTooltip", this->GetChar(), &args); //ITRIG_CLIENTTOOLTIP , CTRIG_ClientTooltip
+                CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+                pScriptArgs->m_pO1 = pObj;
+                pScriptArgs->m_iN1 = fRequested;
+                iRet = pObj->OnTrigger("@ClientTooltip", pScriptArgs, this->GetChar()); //ITRIG_CLIENTTOOLTIP , CTRIG_ClientTooltip
 			}
 
 			if (iRet != TRIGRET_RET_TRUE)
@@ -119,9 +122,10 @@ bool CClient::addAOSTooltip(CObjBase * pObj, bool fRequested, bool fShop)
 
 			if (IsTrigUsed(TRIGGER_CLIENTTOOLTIP_AFTERDEFAULT) || (pItem && IsTrigUsed(TRIGGER_ITEMCLIENTTOOLTIP_AFTERDEFAULT)) || (pChar && IsTrigUsed(TRIGGER_CHARCLIENTTOOLTIP_AFTERDEFAULT)))
 			{
-				CScriptTriggerArgs args(pObj);
-				args.m_iN1 = fRequested;
-				iRet = pObj->OnTrigger("@ClientTooltip_AfterDefault", this->GetChar(), &args); //Save to return on iRet to make sure return value doesn't stuck the boolean.
+                CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+                pScriptArgs->m_pO1 = pObj;
+                pScriptArgs->m_iN1 = fRequested;
+                iRet = pObj->OnTrigger("@ClientTooltip_AfterDefault", pScriptArgs, this->GetChar()); //Save to return on iRet to make sure return value doesn't stuck the boolean.
 			}
 		}
 
@@ -251,15 +255,15 @@ void CClient::AOSTooltip_addName(CObjBase* pObj)
         CChar* pClient = static_cast<CChar*>(GetChar());
         if (IsTrigUsed(TRIGGER_DISPLAYNAME) && pChar->IsClientType() && (pChar != pClient)) //Avoid launch trigger if the target is the same character
         {
-            CScriptTriggerArgs args;
-            args.m_s1 = pChar->GetName();
-            args.m_iN1 = 3;//Trigger use on tooltip
+            CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+            pScriptArgs->m_s1 = pChar->GetName();
+            pScriptArgs->m_iN1 = 3;//Trigger use on tooltip
             
-            if (pChar->OnTrigger(CTRIG_DisplayName, pClient, &args) == TRIGRET_RET_TRUE)
+            if (pChar->OnTrigger(CTRIG_DisplayName, pScriptArgs, pClient) == TRIGRET_RET_TRUE)
             {
                 /*To make it work correctly TooltipCache must be set to 0 on ini or other player will use wrong tooltip*/
                 /*Maybe a beter way can be done*/
-                PUSH_FRONT_TOOLTIP(pChar, new CClientTooltip(1070722, args.m_s1)); // ~1_NOTHING~
+                PUSH_FRONT_TOOLTIP(pChar, new CClientTooltip(1070722, pScriptArgs->m_s1)); // ~1_NOTHING~
                 return; //Avoid to show the prefix and suffix. Show only the name you want
             }
         }
@@ -527,7 +531,7 @@ void CClient::AOSTooltip_addDefaultItemData(CItem * pItem)
         if ( pItem->m_itArmor.m_wHitsMax > 0 )
         {
 		    PUSH_BACK_TOOLTIP(pItem, t = new CClientTooltip(1060639)); // durability ~1_val~ / ~2_val~
-		    t->FormatArgs("%hu\t%hu", pItem->m_itArmor.m_dwHitsCur, pItem->m_itArmor.m_wHitsMax);
+		    t->FormatArgs("%hu\t%hu", pItem->m_itArmor.m_wHitsCur, pItem->m_itArmor.m_wHitsMax);
         }
 	}
 	break;
@@ -587,7 +591,7 @@ void CClient::AOSTooltip_addDefaultItemData(CItem * pItem)
         if ( pItem->m_itWeapon.m_wHitsMax > 0 )
         {
 		    PUSH_BACK_TOOLTIP(pItem, t = new CClientTooltip(1060639)); // durability ~1_val~ / ~2_val~
-		    t->FormatArgs("%hu\t%hu", pItem->m_itWeapon.m_dwHitsCur, pItem->m_itWeapon.m_wHitsMax);
+		    t->FormatArgs("%hu\t%hu", pItem->m_itWeapon.m_wHitsCur, pItem->m_itWeapon.m_wHitsMax);
         }
 	}
 	break;

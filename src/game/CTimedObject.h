@@ -9,34 +9,42 @@
 #include "../sphere/ProfileData.h"
 
 class CComponent;
-class CWorldTicker;
 
 class CTimedObject
 {
     friend class CComponent;
     friend class CWorldTicker;
+    friend class CWorldTickingList;
 
 public:
     static const char* m_sClassName;
 
+#ifdef MT_ENGINES
 protected:
     MT_CMUTEX_DEF;
+#endif
 
 private:
     int64 _iTimeout;
     PROFILE_TYPE _profileType;
     bool _fIsSleeping;
 
+    bool _fIsInWorldTickList;
+    bool _fIsInWorldTickAddList;
+
     /**
     * @brief clears the timeout.
     * Should not be used outside the tick's loop, use SetTimeout(0) instead.
     */
-protected:  inline  void _ClearTimeout() noexcept;
-public:             void  ClearTimeout() noexcept;
+protected:  inline  void _ClearTimeoutRaw() noexcept;
+public:             void  ClearTimeoutRaw() noexcept;
 
 public:
     CTimedObject(PROFILE_TYPE profile) noexcept;
     virtual ~CTimedObject();
+
+protected:
+    inline bool IsTimeoutTickingActive() noexcept;
 
 protected:  inline  bool _IsSleeping() const noexcept;
 public:             bool IsSleeping() const noexcept;
@@ -57,8 +65,8 @@ public:     PROFILE_TYPE GetProfileType() const noexcept;
     /**
      * @brief   Determine if the object is in a "tickable" state.
     */
-protected:  virtual bool _CanTick(bool fParentGoingToSleep = false) const;  // TODO: locks need to be extended to derived classes
-public:     virtual bool  CanTick(bool fParentGoingToSleep = false) const;
+protected:  virtual bool _TickableState() const;  // TODO: locks need to be extended to derived classes
+public:     virtual bool  TickableState() const;
 
     /**
      * @brief   Executes the tick action.
@@ -93,14 +101,14 @@ public:     virtual void  SetTimeout(int64 iDelayInMsecs);
 
     /**
     * @brief   &lt; Timer.
-    * @param   iDelayInSecs   Delay in seconds.
+    * @param   iSeconds   Delay in seconds.
     */
 protected:  void _SetTimeoutS(int64 iSeconds);
 public:     void  SetTimeoutS(int64 iSeconds);
 
     /**
     * @brief   &lt; Timer.
-    * @param   iDelayInTenths   Delay in tenths of second.
+    * @param   iTenths   Delay in tenths of second.
     */
 protected:  void _SetTimeoutD(int64 iTenths);
 public:     void  SetTimeoutD(int64 iTenths);
@@ -162,7 +170,7 @@ void CTimedObject::_SetTimeoutRaw(int64 iDelayInMsecs) noexcept
     _iTimeout = iDelayInMsecs;
 }
 
-void CTimedObject::_ClearTimeout() noexcept
+void CTimedObject::_ClearTimeoutRaw() noexcept
 {
     _iTimeout = 0;
 }
@@ -175,6 +183,11 @@ bool CTimedObject::_IsSleeping() const noexcept
 void CTimedObject::_GoSleep()
 {
     _fIsSleeping = true;
+}
+
+bool CTimedObject::IsTimeoutTickingActive() noexcept
+{
+    return _fIsInWorldTickList || _fIsInWorldTickAddList;
 }
 
 bool CTimedObject::_IsTimerSet() const noexcept

@@ -3,7 +3,7 @@ name: CodeQL
 
 on:
   push:
-    branches: ["static-analysis"]
+    branches: ["static-analysis", "master", "main"]
     paths-ignore:
       - '.gitignore'
       - '.gitattributes'
@@ -44,19 +44,21 @@ jobs:
             lsb_release -d
 
             sudo add-apt-repository universe && sudo sudo apt-get -qq update
-            sudo apt install -yq --no-install-recommends ninja-build gcc-12 g++-12 > /dev/null
-            sudo apt install -yq --no-install-recommends mariadb-client libmariadb-dev
+            sudo apt-get install -yq --no-install-recommends \
+              ninja-build gcc-12 g++-12 \
+              mariadb-client libmariadb-dev
             sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 90 --slave /usr/bin/g++ g++ /usr/bin/g++-12
 
     - name: Report building tools
       run:  |
             echo "GCC:" && gcc -v
+            echo "Default Linker:" && ld -v
             echo && echo "CMake:" && cmake --version
             #echo && echo "Ninja:" && ninja --version
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v2
+      uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
         config-file: ./.github/codeql/codeql-config.yml
@@ -86,7 +88,7 @@ jobs:
     # https://josh-ops.com/posts/github-codeql-ignore-files/
     # https://github.com/advanced-security/filter-sarif
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
+      uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
         upload: false # disable the upload here - we will upload in a different action
@@ -101,6 +103,6 @@ jobs:
         output: sarif-results/${{ matrix.language }}.sarif
 
     - name: Upload SARIF
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: sarif-results/${{ matrix.language }}.sarif

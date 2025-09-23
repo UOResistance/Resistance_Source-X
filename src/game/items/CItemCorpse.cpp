@@ -1,5 +1,5 @@
-#include "../../common/CException.h"
-#include "../../common/CExpression.h"
+//#include "../../common/CException.h" // included in the precompiled header
+//#include "../../common/CExpression.h" // included in the precompiled header
 #include "../../common/CLog.h"
 #include "../../common/sphereproto.h"
 #include "../chars/CChar.h"
@@ -16,15 +16,14 @@ CItemCorpse::CItemCorpse( ITEMID_TYPE id, CItemBase * pItemDef ) :
 {
 }
 
+/*
 CItemCorpse::~CItemCorpse()
 {
-	EXC_TRY("Cleanup in destructor");
-
-	// Must remove early because virtuals will fail in child destructor.
-	DeletePrepare();
-
-	EXC_CATCH;
+    // CItemVendable::DeletePrepare is called in ~CItemVendable().
+    // We would have to call here DeletePrepare if this class had a own DeletePrepare method.
+    DeletePrepare();        //  Must remove early because virtuals will fail in child destructor.
 }
+*/
 
 bool CItemCorpse::IsCorpseResurrectable(CChar * pCharHealer, CChar * pCharGhost) const
 {
@@ -39,7 +38,7 @@ bool CItemCorpse::IsCorpseResurrectable(CChar * pCharHealer, CChar * pCharGhost)
 	{
 		return false;
 	}
-	
+
 	//Check if the ghost is visible when targetting the corpse.
 	if (pCharGhost->IsStatFlag(STATF_INSUBSTANTIAL))
 	{
@@ -218,7 +217,7 @@ CItemCorpse * CChar::MakeCorpse( bool fFrontFall )
 
 	if ( !(uiFlags & DEATH_NOLOOTDROP) )		// move non-newbie contents of the pack to corpse
 		DropAll( pCorpse );
-	
+
     if (iDecayTimer != -1)
     {
         pCorpse->MoveToDecay(GetTopPoint(), iDecayTimer);

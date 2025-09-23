@@ -62,32 +62,35 @@ enum EF_TYPE
  */
 enum OF_TYPE
 {
-	OF_NoDClickTarget			    = 0x0000001,    // Weapons won't open a target in the cursor after DClicking them for equip.
-	OF_NoSmoothSailing			    = 0x0000002,    // Deactivate Smooth Sailing for clients >= 7.0.8.13.
-	OF_ScaleDamageByDurability	    = 0x0000004,    // Weapons/armors will lose DAM/AR effect based on it's current durability.
-	OF_Command_Sysmsgs			    = 0x0000008,    // Shows status of hearall, allshow, allmove... commands after toggling them.
-	OF_PetSlots					    = 0x0000010,    // Enable AOS pet follower slots on chars. If enabled, all players must have MAXFOLLOWER property set (default=5).
-	OF_OSIMultiSight			    = 0x0000020,    // Only send items inside multis when the player enter on the multi area.
-	OF_Items_AutoName			    = 0x0000040,    // Auto rename potions/scrolls to match its spell name
-	OF_FileCommands				    = 0x0000080,    // Enable the usage of FILE commands
-	OF_NoItemNaming				    = 0x0000100,    // Disable the DEFMSG."grandmaster_mark" in crafted items
-	OF_NoHouseMuteSpeech		    = 0x0000200,    // Players outside multis won't hear what is told inside
-	OF_NoContextMenuLOS			    = 0x0000400,    // Disable LOS check to use context menus on chars
-	OF_MapBoundarySailing		    = 0x0000800,    // Boats will move to the other side of the map when reach map boundary
-	OF_Flood_Protection			    = 0x0001000,    // Prevent the server send messages to client if its the same message as the last already sent
-	OF_Buffs					    = 0x0002000,    // Enable the buff/debuff bar on ML clients >= 5.0.2b
-	OF_NoPrefix					    = 0x0004000,    // Don't show "a" and "an" prefix on item names
-	OF_DyeType					    = 0x0008000,    // Allow use i_dye on all items with t_dye_vat typedef instead only on i_dye_tub itemdef
-	OF_DrinkIsFood				    = 0x0010000,    // Typedef t_drink will increase food level like t_food
-	OF_NoDClickTurn				    = 0x0020000,    // Don't turn the player when DClick something
-	OF_NoPaperdollTradeTitle	    = 0x0040000,	// Don't show the trade title on the paperdoll
-    OF_NoTargTurn				    = 0x0080000,    // Don't turn the player when targetting something
-    OF_StatAllowValOverMax          = 0x0100000,    // Allow stats value above their maximum value (i.e. allow hits value > maxhits).
-    OF_GuardOutsideGuardedArea      = 0x0200000,    // Allow guards to walk in unguarded areas, instead of being teleported back to their home point.
-    OF_OWNoDropCarriedItem          = 0x0400000,     // When overweighted, don't drop items on ground when moving them (or using BOUNCE) and checking if you can carry them.
-    OF_AllowContainerInsideContainer = 0x0800000,    //Allow containers inside other containers even if they are heavier than the container being inserted into.
-    OF_VendorStockLimit              = 0x01000000,   // Limits how much of an item a vendor can buy using the value set in the TEMPLATE. Format: BUY=ID,AMOUNT
-    OF_EnableGuildAlignNotoriety     = 0x02000000    // If enabled, guilds with the same alignment will see each other as enemy or ally.
+    OF_NoDClickTarget              = 0x0000001,    // Weapons won't open a target in the cursor after DClicking them for equip.
+    OF_NoSmoothSailing			   = 0x0000002,    // Deactivate Smooth Sailing for clients >= 7.0.8.13.
+    OF_ScaleDamageByDurability	   = 0x0000004,    // Weapons/armors will lose DAM/AR effect based on it's current durability.
+    OF_Command_Sysmsgs			   = 0x0000008,    // Shows status of hearall, allshow, allmove... commands after toggling them.
+    OF_PetSlots					   = 0x0000010,    // Enable AOS pet follower slots on chars. If enabled, all players must have MAXFOLLOWER property set (default=5).
+    OF_OSIMultiSight               = 0x0000020,    // Only send items inside multis when the player enter on the multi area.
+    OF_Items_AutoName			   = 0x0000040,    // Auto rename potions/scrolls to match its spell name
+    OF_FileCommands				   = 0x0000080,    // Enable the usage of FILE commands
+    OF_NoItemNaming				   = 0x0000100,    // Disable the DEFMSG."grandmaster_mark" in crafted items
+    OF_NoHouseMuteSpeech           = 0x0000200,    // Players outside multis won't hear what is told inside
+    OF_NoContextMenuLOS			   = 0x0000400,    // Disable LOS check to use context menus on chars
+    OF_MapBoundarySailing		   = 0x0000800,    // Boats will move to the other side of the map when reach map boundary
+    OF_Flood_Protection			   = 0x0001000,    // Prevent the server send messages to client if its the same message as the last already sent
+    OF_Buffs                       = 0x0002000,    // Enable the buff/debuff bar on ML clients >= 5.0.2b
+    OF_NoPrefix					   = 0x0004000,    // Don't show "a" and "an" prefix on item names
+    OF_DyeType					   = 0x0008000,    // Allow use i_dye on all items with t_dye_vat typedef instead only on i_dye_tub itemdef
+    OF_DrinkIsFood				   = 0x0010000,    // Typedef t_drink will increase food level like t_food
+    OF_NoDClickTurn				   = 0x0020000,    // Don't turn the player when DClick something
+    OF_NoPaperdollTradeTitle       = 0x0040000,	   // Don't show the trade title on the paperdoll
+    OF_NoTargTurn				   = 0x0080000,    // Don't turn the player when targetting something
+    OF_StatAllowValOverMax         = 0x0100000,    // Allow stats value above their maximum value (i.e. allow hits value > maxhits).
+    OF_GuardOutsideGuardedArea     = 0x0200000,    // Allow guards to walk in unguarded areas, instead of being teleported back to their home point.
+    OF_OWNoDropCarriedItem         = 0x0400000,    // When overweighted, don't drop items on ground when moving them (or using BOUNCE) and checking if you can carry them.
+    OF_AllowContainerInsideContainer=0x0800000,    // Allow containers inside other containers even if they are heavier than the container being inserted into.
+    OF_VendorStockLimit            = 0x01000000,   // Limits how much of an item a vendor can buy using the value set in the TEMPLATE. Format: BUY=ID,AMOUNT
+    OF_EnableGuildAlignNotoriety   = 0x02000000,   // If enabled, guilds with the same alignment will see each other as enemy or ally.
+    OF_NoDclickEquip               = 0x04000000,   // If enabled, double-click does not equip items.
+    OF_PetBehaviorOwnerNeutral     = 0x08000000,   // Should my pets always appear natural to me?
+    OF_NPCMovementOldStyle         = 0x10000000    // Required setting to make NPCs run like in the old version.
 };
 
 /**
@@ -125,7 +128,8 @@ enum COMBATFLAGS_TYPE
                                             //   WARNING: doesn't work with Gargoyles due to the new animation packet not accepting a custom animation duration!
     COMBAT_FIRSTHIT_INSTANT     = 0x20000,  // The first hit in a fight doesn't wait for the recoil time (OSI like)
 	COMBAT_NPC_BONUSDAMAGE		= 0x40000,	// NPC will get full bonus damage from various sources.
-    COMBAT_PARALYZE_CANSWING    = 0x80000   // Characters can continue attacking while paralyzed. (Old sphere behaviour)
+    COMBAT_PARALYZE_CANSWING    = 0x80000,   // Characters can continue attacking while paralyzed. (Old sphere behaviour)
+    COMBAT_ATTACK_NOAGGREIVED   = 0x100000, // Not being criminal when attacking the murderer (Old sphere behaviour)
 };
 
 /**
@@ -173,7 +177,8 @@ enum REVEALFLAGS_TYPE
     REVEALF_SNOOPING             = 0x0040,    // Do not reveal while a character snooping.
     REVEALF_STEALING             = 0x0080,    // Do not reveal while a character stealing.
     REVEALF_STEALING_SUCCESS     = 0x0100,    // Reveal if stealing successfully finished.
-    REVEALF_STEALING_FAIL        = 0x0200     // Reveal if stealing failed.
+    REVEALF_STEALING_FAIL        = 0x0200,    // Reveal if stealing failed.
+    REVEALF_ONHORSE              = 0x0400     // Reveal if on horse
 };
 
 enum EMOTEFLAGS_TYPE
@@ -410,6 +415,7 @@ public:
 	uint _uiOptionFlags;		// Option Flags.
     uint _uiAreaFlags;		    // Area Flags.
     bool m_fNoResRobe;          // Adding resurrection robe to resurrected players or not.
+    bool m_iBounceMessage;      // Display more item bounce messages.
     int	 m_iLostNPCTeleport;    // if Distance from HOME is greater than this, NPC will teleport to it instead of walking.
 	int64 m_iWoolGrowthTime;    // how long till wool grows back on sheared sheep, in minutes (stored as milliseconds).
 	int  m_iAttackerTimeout;    // Timeout for an attacker  (stored in seconds, not in milliseconds).
@@ -505,6 +511,9 @@ public:
 #define NPC_AI_PERSISTENTPATH	0x00400     // NPC will try often to find a path with pathfinding.
 #define NPC_AI_THREAT			0x00800     // Enable the use of the threat variable when finding for target while fighting.
 	uint m_iNpcAi;      // NPCAI Flags.
+
+    // The chance that a wandering NPC will analyze its surroundings for the current step.
+    uint m_iNPCWanderLookAroundChance;
 
 	//	Experience system
 	bool m_fExperienceSystem;   // Enables the experience system.
@@ -645,14 +654,21 @@ public:
 	CResourceHashArray m_WebPages;		// These can be linked back to the script.
 
 private:
-	CResourceID ResourceGetNewID( RES_TYPE restype, lpctstr pszName, CVarDefContNum ** ppVarNum, bool fNewStyleDef );
+    char m_iniDirectory[SPHERE_MAX_PATH];
 
 public:
 	CServerConfig();
+    void SetIniDirectory(const char* path);
 	virtual ~CServerConfig();
 
 	CServerConfig(const CServerConfig& copy) = delete;
 	CServerConfig& operator=(const CServerConfig& other) = delete;
+
+private:
+    CResourceID ResourceGetNewID( RES_TYPE restype, lpctstr pszName, CVarDefContNum ** ppVarNum, bool fNewStyleDef );
+
+    CResourceScript * AddResourceFile( lpctstr pszName );
+    void AddResourceDir( lpctstr pszDirName );
 
 public:
 	virtual bool r_LoadVal( CScript &s ) override;
@@ -695,14 +711,25 @@ public:
 	void Unload( bool fResync );
 	void _OnTick( bool fNow );
 
+    // TODO: add doxygen-style comments
+    CResourceScript * FindResourceFile( lpctstr pszTitle );
+    CResourceScript * LoadResourcesAdd( lpctstr pszNewName );
+
+    void LoadResourcesOpen( CScript * pScript, bool fAddSorted );
+    bool LoadResources(CResourceScript * pScript, bool fAddSorted);
+
+    CResourceScript * GetResourceFile( size_t i );
+
+    bool OpenResourceFind( CScript &s, lpctstr pszFilename, bool fCritical = true );
+
     /**
      * @brief   Loads resource section ([SKILL ], [SPELL ], [CHARDEF ]...).
      *
-     * @param [in,out]  pScript If non-null, the script.
+     * @param  pScript to be loaded.
      *
      * @return  true if it succeeds, false if it fails.
      */
-	virtual bool LoadResourceSection( CScript * pScript ) override;
+    bool LoadResourceSection( CScript * pScript, bool fInsertSorted);
 
     /**
      * @brief   Sort all spells in order.
@@ -715,7 +742,7 @@ public:
     *
     * @param   restype Resource Type.
     *
-    * @param   ptcName Resource Name.
+    * @param   pszName Resource Name.
     *
     * @param   wPage Resource Page attribute.
     *
@@ -731,9 +758,28 @@ public:
      *
      * @return  null if it fails, else a pointer to a CResourceDef.
      */
-	//CResourceDef * RegisteredResourceGetDefRef( const CResourceID& rid ) const;
     sl::smart_ptr_view<CResourceDef> RegisteredResourceGetDefRef(const CResourceID& rid) const;
     CResourceDef* RegisteredResourceGetDef(const CResourceID& rid) const;
+
+    /**
+     * @brief   Get a Resource name from its CResourceID.
+     *
+     * @param   rid The rid.
+     *
+     * @return  The name or value.
+     */
+    lpctstr ResourceGetName( const CResourceID& rid ) const;
+
+    /**
+     * @brief   Get a Resource name from its index (CResourceID) and expected type.
+     *
+     * @param   rid The rid.
+     * @param   iExpectedType The expected RES_TYPE
+     * @param   ptcOutError pointer to string holding the output error string, if any.
+     *
+     * @return  null if it fails, else a pointer to a CResourceDef.
+     */
+    lpctstr ResourceTypedGetName(const CResourceIDBase& rid, const RES_TYPE iExpectedType, lptstr *ptcOutError );
 
 	// Print EF/OF Flags
 	void PrintEFOFFlags( bool bEF = true, bool bOF = true, CTextConsole *pSrc = nullptr );
@@ -809,7 +855,7 @@ public:
 	/**
 	* @brief   Get the def for the server in position 'index' in servers list.
 	*
-	* @param   pszText The server index.
+	* @param   index The server index.
 	*
 	* @return  CServerRef of the server.
 	*/
@@ -978,7 +1024,6 @@ public:
      *
      * @param [in,out]  pChar       If non-null, the character.
      * @param [in,out]  pCharTarg   If non-null, the character targ.
-     * @param   skill               The skill.
      *
      * @return  The calculated combat chance to hit.
      */
@@ -988,7 +1033,7 @@ public:
      * @brief   Calculates the combat chance to parry.
      *
      * @param [in,out]  pChar       If non-null, the character attempting to parry.
-     * @param   skill               The skill.
+     * @param   pItemParry          @todo
      *
      * @return  The calculated combat chance to parry.
      */
@@ -1114,7 +1159,7 @@ public:
     /**
     * @brief   Gets default message (sphere_msgs.scp).
     *
-    * @param   ptcKey  The key.
+    * @param   lKeyNum  The key.
     *
     * @return  The default message.
     */
@@ -1130,7 +1175,6 @@ typedef std::map<dword,dword> KRGumpsMap;
 	bool GenerateDefname(tchar *pObjectName, size_t iInputLength, lpctstr pPrefix, TemporaryString *pOutput, bool fCheckConflict = true, CVarDefMap* vDefnames = nullptr);
 	bool DumpUnscriptedItems(CTextConsole * pSrc, lpctstr pszFilename);
 } g_Cfg;
-
 
 
 #define IsSetEF(ef)				((g_Cfg._uiExperimentalFlags & ef) != 0)

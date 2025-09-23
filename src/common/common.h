@@ -34,22 +34,6 @@
 #include <utility>
 #include <vector>
 
-#include "assertion.h"
-#include "basic_threading.h"
-
-#ifdef _WIN32
-	#include "os_windows.h"
-#endif
-#include "datatypes.h"
-#ifndef _WIN32
-	#include "os_unix.h"
-#endif
-
-#include "sphere_library/stypecast.h"
-
-
-/* Coding helpers */
-
 // On Windows, Clang with MSVC runtime defines _MSC_VER! (But also __clang__).
 #if !defined(_MSC_VER) || defined(__clang__)
 #   define NON_MSVC_COMPILER 1
@@ -62,6 +46,85 @@
 // On Windows, Clang can use MinGW or MSVC backend.
 #ifdef _MSC_VER
 #   define MSVC_RUNTIME
+#endif
+
+#if defined(MSVC_COMPILER)
+#   define RESTRICT __restrict
+#else
+#   define RESTRICT __restrict__
+#endif
+
+#ifdef _WIN32
+	#include "os_windows.h"
+#endif
+#include "datatypes.h"
+#ifndef _WIN32
+	#include "os_unix.h"
+#endif
+
+
+/* Coding helpers */
+
+// Target arch.
+#ifndef __SIZEOF_POINTER__
+#   if defined(_WIN64)
+#       define __SIZEOF_POINTER__ 8
+#   elif defined(_WIN32)
+#       define __SIZEOF_POINTER__ 4
+#   else
+#       error "Can't detect the arch?"
+#   endif
+#endif
+
+#if (__SIZEOF_POINTER__ == 8)
+#   define ARCH_64
+#elif (__SIZEOF_POINTER__ == 4)
+#   define ARCH_32
+#else
+#   error "Can't detect the arch?"
+#endif
+
+// Function specifier, like noexcept. Use this to make us know that the function code was checked and we know it can throw an exception.
+#define CANTHROW    noexcept(false)
+
+// To be used only as an helper marker, since there are functions with similar names intended to have different signatures and/or not be virtual.
+// This means that we do NOT have forgotten to add the "virtual" qualifier, simply this method isn't virtual.
+#define NONVIRTUAL
+
+// Cpp attributes
+#define FALLTHROUGH [[fallthrough]]
+#define NODISCARD	[[nodiscard]]
+
+#if defined(__GNUC__) || defined(__clang__)
+#   define RETURNS_NOTNULL [[gnu::returns_nonnull]]
+#else
+#   define RETURNS_NOTNULL
+#endif
+
+#ifdef _DEBUG
+#define NOEXCEPT_NODEBUG
+#else
+#define NOEXCEPT_NODEBUG noexcept
+#endif
+
+#include "assertion.h"
+#include "basic_threading.h"
+
+// use to indicate that a function uses printf-style arguments, allowing GCC
+// to validate the format string and arguments:
+// a = 1-based index of format string
+// b = 1-based index of arguments
+// (note: add 1 to index for non-static class methods because of the implicit 'this' argument
+// is inserted in position 1)
+#ifdef MSVC_COMPILER
+#define SPHERE_PRINTFARGS(a,b)
+#else
+#   ifdef __MINGW32__
+// Clang doesn't have a way to switch from gnu or ms style printf arguments. It just depends on the runtime used.
+#       define SPHERE_PRINTFARGS(a,b) __attribute__ ((format(gnu_printf, a, b)))
+#   else
+#      define SPHERE_PRINTFARGS(a,b) __attribute__ ((format(printf, a, b)))
+#   endif
 #endif
 
 
@@ -81,60 +144,108 @@
 
 //#define IsNegative(c)			(((c) < 0) ? 1 : 0)
 template <typename T>
-constexpr bool IsNegative(T val) noexcept {
+[[nodiscard]] constexpr
+    bool IsNegative(T val) noexcept {
     return (val < 0);
 }
 
 //-- Bitwise magic: combine numbers.
 
-// MAKEWORD:  defined in minwindef.h (loaded by windows.h), so it's missing only on Linux.
-// MAKEDWORD: undefined even on Windows, it isn't in windows.h.
-// MAKELONG:  defined in minwindef.h, we use it only on Windows (CSWindow.h). on Linux is missing, we created a define but is commented.
-#define MAKEDWORD(low, high)	((dword)(((word)low) | (((dword)((word)high)) << 16)))
+//#define LOWORD(l)		((word)((dword)(l) & 0xffff))
+inline constexpr word dword_low_word(dword in) noexcept {
+    return (in & 0xFFFF);
+}
+
+//#define HIWORD(l)		((word)((dword)(l) >> 16))
+[[nodiscard]] inline constexpr
+    word dword_hi_word(dword in) noexcept {
+    return (in >> 16);
+}
+
+//#define LOBYTE(w)		((byte)((dword)(w) &  0xff))
+[[nodiscard]] inline constexpr
+    byte word_low_byte(word in) noexcept {
+    return (in & 0xFF);
+}
+
+//#define HIBYTE(w)		((byte)((dword)(w) >> 8))
+[[nodiscard]] inline constexpr
+    byte word_hi_byte(word in) noexcept {
+    return (in >> 8);
+}
+
+//#define MAKEWORD(low,high)		((word)(((byte)(low))|(((word)((byte)(high)))<<8)))
+[[nodiscard]] inline constexpr
+    word make_word(byte low, byte high) noexcept {
+    return (word)low | ((word)high << 8);
+}
+
+//#define make_dword(low, high)	((dword)(((word)low) | (((dword)((word)high)) << 16)))
+[[nodiscard]] inline constexpr
+    dword make_dword(word low, word high) noexcept {
+    return (dword)low | ((dword)high << 16);
+}
 
 
 //#define IMulDiv(a,b,c)		(((((int)(a)*(int)(b)) + (int)(c / 2)) / (int)(c)) - (IsNegative((int)(a)*(int)(b))))
-constexpr int IMulDiv(const int a, const int b, const int c) noexcept
+[[nodiscard]] constexpr
+    int IMulDiv(const int a, const int b, const int c) noexcept
 {
 	const int ab = a*b;
 	return ((ab + (c/2)) / c) - IsNegative(ab);
 }
 
-constexpr uint UIMulDiv(const uint a, const uint b, const uint c) noexcept
+[[nodiscard]] constexpr
+    uint UIMulDiv(const uint a, const uint b, const uint c) noexcept
 {
 	const int ab = a * b;
 	return ((ab + (c / 2)) / c) - IsNegative(ab);
 }
 
 //#define IMulDivLL(a,b,c)		(((((llong)(a)*(llong)(b)) + (llong)(c / 2)) / (llong)(c)) - (IsNegative((llong)(a)*(llong)(b))))
-constexpr llong IMulDivLL(const llong a, const llong b, const llong c) noexcept
+[[nodiscard]] constexpr
+    llong IMulDivLL(const llong a, const llong b, const llong c) noexcept
 {
 	const llong ab = a*b;
 	return ((ab + (c/2)) / c) - IsNegative(ab);
 }
-constexpr realtype IMulDivRT(const realtype a, const realtype b, const realtype c) noexcept
+[[nodiscard]] constexpr
+    realtype IMulDivRT(const realtype a, const realtype b, const realtype c) noexcept
 {
 	const realtype ab = a*b;
 	return ((ab + (c/2)) / c) - IsNegative(ab);
 }
 
 //#define IMulDivDown(a,b,c)	(((a)*(b))/(c))
-constexpr int IMulDivDown(const int a, const int b, const int c) noexcept
+[[nodiscard]] constexpr
+    int IMulDivDown(const int a, const int b, const int c) noexcept
 {
 	return (a*b)/c;
 }
-constexpr llong IMulDivDownLL(const llong a, const llong b, const llong c) noexcept
+[[nodiscard]] constexpr
+    llong IMulDivDownLL(const llong a, const llong b, const llong c) noexcept
 {
 	return (a*b)/c;
 }
 
 //#define sign(n) (((n) < 0) ? -1 : (((n) > 0) ? 1 : 0))
 template<typename T>
+[[nodiscard]]
 constexpr T sign(const T n) noexcept
 {
     static_assert(std::is_arithmetic<T>::value, "Invalid data type.");
 	return ( (n < 0) ? -1 : ((n > 0) ? 1 : 0) );
 }
+
+[[nodiscard]] inline constexpr bool IsPowerOfTwo(unsigned int n) noexcept
+{
+    // n & (n - 1): This expression removes the lowest set bit in n.
+    //  For powers of two, which have exactly one bit set (e.g., 2 is 10 in binary, 4 is 100, etc.),
+    //  subtracting one yields a number where all lower bits are set to 1 (e.g., 2 - 1 = 1, 4 - 1 = 3), and the bitwise AND of these two numbers results in 0.
+    return n != 0 && (n & (n - 1)) == 0;
+}
+[[nodiscard]] inline constexpr bool IsPowerOfTwo(unsigned short n) noexcept { return n != 0 && (n & (n - 1)) == 0; }
+[[nodiscard]] inline constexpr bool IsPowerOfTwo(unsigned char  n) noexcept { return n != 0 && (n & (n - 1)) == 0; }
 
 #define minimum(x,y)		((x)<(y)?(x):(y))		// NOT to be used with functions! Store the result of the function in a variable first, otherwise the function will be executed twice!
 #define maximum(x,y)		((x)>(y)?(x):(y))		// NOT to be used with functions! Store the result of the function in a variable first, otherwise the function will be executed twice!
@@ -170,6 +281,7 @@ constexpr T saturating_sub(T a, T b) noexcept {
 // Ensure that a constexpr value or a generic expression is evaluated at compile time.
 // Constexpr values are constants and cannot be mutated in the code.
 template <typename T>
+[[nodiscard]]
 consteval T as_consteval(T&& val_) noexcept {
     return val_;
 }
@@ -181,11 +293,12 @@ consteval T as_consteval(T&& val_) noexcept {
 */
 #undef UNREFERENCED_PARAMETER
 template <typename T>
-constexpr void UnreferencedParameter(T const&) noexcept {
+constexpr void UnreferencedParameter([[maybe_unused]] T const& ) noexcept {
     ;
 }
 
 //#include <type_traits> // already included by stypecast.h
+#include "sphere_library/stypecast.h"
 
 // Arguments: Class, arguments...
 #define STATIC_ASSERT_NOEXCEPT_CONSTRUCTOR(_ClassType, ...) \
@@ -206,50 +319,8 @@ constexpr void UnreferencedParameter(T const&) noexcept {
 #define STATIC_ASSERT_THROWING_MEMBER_FUNCTION(_ClassType, _func, ...) \
     static_assert(!std::is_nothrow_invocable_v<decltype(&_ClassType::_func), _ClassType __VA_OPT__(,) __VA_ARGS__>, #_func  " function should be noexcept!")
 
-
-// Function specifier, like noexcept. Use this to make us know that the function code was checked and we know it can throw an exception.
-#define CANTHROW    noexcept(false)
-
-// To be used only as an helper marker, since there are functions with similar names intended to have different signatures and/or not be virtual.
-// This means that we do NOT have forgotten to add the "virtual" qualifier, simply this method isn't virtual.
-#define NONVIRTUAL
-
-// Cpp attributes
-#define FALLTHROUGH [[fallthrough]]
-#define NODISCARD	[[nodiscard]]
-
-#if defined(__GNUC__) || defined(__clang__)
-#   define RETURNS_NOTNULL [[gnu::returns_nonnull]]
-#else
-#   define RETURNS_NOTNULL
-#endif
-
-#ifdef _DEBUG
-    #define NOEXCEPT_NODEBUG
-#else
-    #define NOEXCEPT_NODEBUG noexcept
-#endif
-
-
 // For unrecoverable/unloggable errors. Should be used almost *never*.
 #define STDERR_LOG(...)     fprintf(stderr, __VA_ARGS__); fflush(stderr)
-
-// use to indicate that a function uses printf-style arguments, allowing GCC
-// to validate the format string and arguments:
-// a = 1-based index of format string
-// b = 1-based index of arguments
-// (note: add 1 to index for non-static class methods because 'this' argument
-// is inserted in position 1)
-#ifdef MSVC_COMPILER
-    #define SPHERE_PRINTFARGS(a,b)
-#else
-	#ifdef __MINGW32__
-        // Clang doesn't have a way to switch from gnu or ms style printf arguments. It just depends on the runtime used.
-        #define SPHERE_PRINTFARGS(a,b) __attribute__ ((format(gnu_printf, a, b)))
-	#else
-        #define SPHERE_PRINTFARGS(a,b) __attribute__ ((format(printf, a, b)))
-	#endif
-#endif
 
 
 /* Sanitizers utilities */

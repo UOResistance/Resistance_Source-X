@@ -4,9 +4,10 @@
 #include "../common/resource/sections/CRandGroupDef.h"
 #include "../common/resource/sections/CRegionResourceDef.h"
 #include "../common/resource/sections/CResourceNamedDef.h"
+#include "../common/sphere_library/CSFileList.h"
 #include "../common/sphere_library/CSRand.h"
-#include "../common/CException.h"
-#include "../common/CExpression.h"
+//#include "../common/CException.h" // included in the precompiled header
+//#include "../common/CExpression.h" // included in the precompiled header
 #include "../common/CUOInstall.h"
 #include "../common/sphereversion.h"
 #include "../network/CClientIterator.h"
@@ -47,6 +48,8 @@
 // .ini settings.
 CServerConfig::CServerConfig()
 {
+    m_iniDirectory[0] = '\0';
+
 	m_timePeriodic = 0;
 
 	m_fUseNTService		= false;
@@ -202,6 +205,7 @@ CServerConfig::CServerConfig()
 	m_fDisplayPercentAr = false;
 	m_fDisplayElementalResistance = false;
 	m_fNoResRobe		= 0;
+    m_iBounceMessage        = false;
 	m_iLostNPCTeleport	= 50;
 	m_iAutoProcessPriority = 0;
 	m_iDistanceYell		= UO_MAP_VIEW_RADAR;
@@ -253,6 +257,8 @@ CServerConfig::CServerConfig()
 	_uiStatFlag			= 0;
 
 	m_iNpcAi			= 0;
+    m_iNPCWanderLookAroundChance = 30;
+
 	m_iMaxLoopTimes		= 100000;
 
 	// Third Party Tools
@@ -660,6 +666,7 @@ enum RC_TYPE
 	RC_NPCTRAINCOST,			// m_iTrainSkillCost
 	RC_NPCTRAINMAX,				// m_iTrainSkillMax
 	RC_NPCTRAINPERCENT,			// m_iTrainSkillPercent
+    RC_NPCWANDERLOOKAROUNDCHANCE, // m_iNPCWanderLookAroundChance
 	RC_NTSERVICE,				// m_fUseNTService
 	RC_OPTIONFLAGS,				// _uiOptionFlags
 	RC_OVERSKILLMULTIPLY,		// m_iOverSkillMultiply
@@ -725,6 +732,7 @@ enum RC_TYPE
 	RC_VENDORMARKUP,			// m_iVendorMarkup
 	RC_VENDORMAXSELL,			// m_iVendorMaxSell
 	RC_VENDORTRADETITLE,		// m_fVendorTradeTitle
+	RC_VERBOSEITEMBOUNCE,		// m_iBounceMessage
 	RC_VERSION,
 	RC_WALKBUFFER,
 	RC_WALKREGEN,
@@ -749,7 +757,6 @@ enum RC_TYPE
 #endif
 
 const CAssocReg CServerConfig::sm_szLoadKeys[RC_QTY + 1]
-
 {
     { "ACCTFILES",				{ ELEM_CSTRING,	static_cast<uint>OFFSETOF(CServerConfig,m_sAcctBaseDir)			}},
     { "ADVANCEDLOS",			{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iAdvancedLos)			}},
@@ -954,7 +961,8 @@ const CAssocReg CServerConfig::sm_szLoadKeys[RC_QTY + 1]
 	{ "NPCTRAINCOST",			{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iTrainSkillCost)		}},
 	{ "NPCTRAINMAX",			{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iTrainSkillMax)		}},
 	{ "NPCTRAINPERCENT",		{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iTrainSkillPercent)	}},
-	{ "NTSERVICE",				{ ELEM_BOOL,	static_cast<uint>OFFSETOF(CServerConfig,m_fUseNTService)			}},
+    { "NPCWANDERLOOKAROUNDCHANCE", { ELEM_MASK_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iNPCWanderLookAroundChance)}},
+    { "NTSERVICE",				{ ELEM_BOOL,	static_cast<uint>OFFSETOF(CServerConfig,m_fUseNTService)			}},
 	{ "OPTIONFLAGS",			{ ELEM_MASK_INT,static_cast<uint>OFFSETOF(CServerConfig,_uiOptionFlags)			}},
 	{ "OVERSKILLMULTIPLY",		{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iOverSkillMultiply)	}},
 	{ "PACKETDEATHANIMATION",	{ ELEM_BOOL,	static_cast<uint>OFFSETOF(CServerConfig,m_iPacketDeathAnimation)	}},
@@ -1019,6 +1027,7 @@ const CAssocReg CServerConfig::sm_szLoadKeys[RC_QTY + 1]
 	{ "VENDORMARKUP",			{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iVendorMarkup)			}},
 	{ "VENDORMAXSELL",			{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iVendorMaxSell)		}},
 	{ "VENDORTRADETITLE",		{ ELEM_BOOL,	static_cast<uint>OFFSETOF(CServerConfig,m_fVendorTradeTitle)		}},
+	{ "VERBOSEITEMBOUNCE",		{ ELEM_BOOL,	static_cast<uint>OFFSETOF(CServerConfig,m_iBounceMessage)		}},
 	{ "VERSION",				{ ELEM_VOID,	0												}},
 	{ "WALKBUFFER",				{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iWalkBuffer)			}},
 	{ "WALKREGEN",				{ ELEM_INT,		static_cast<uint>OFFSETOF(CServerConfig,m_iWalkRegen)			}},
@@ -1036,6 +1045,15 @@ const CAssocReg CServerConfig::sm_szLoadKeys[RC_QTY + 1]
 #if defined(__GNUC__) || defined(__clang__)
     #pragma GCC diagnostic pop
 #endif
+
+void CServerConfig::SetIniDirectory(const char* path)
+{
+    if (path && path[0] != '\0')
+    {
+        strncpy(m_iniDirectory, path, SPHERE_MAX_PATH - 1);
+        m_iniDirectory[SPHERE_MAX_PATH - 1] = '\0';
+    }
+}
 
 bool CServerConfig::r_LoadVal( CScript &s )
 {
@@ -1085,7 +1103,7 @@ bool CServerConfig::r_LoadVal( CScript &s )
 				{
 					if ( !strnicmp(pszStr, "ALLSECTORS", 10) )
 					{
-						const int nSectors = CSectorList::Get()->GetSectorQty(nMapNumber);
+                        const int nSectors = CSectorList::Get().GetMapSectorData(nMapNumber).iSectorQty;
 						pszStr = s.GetArgRaw();
 
 						if ( pszStr && *pszStr )
@@ -1094,7 +1112,7 @@ bool CServerConfig::r_LoadVal( CScript &s )
 							script.CopyParseState(s);
 							for (int nIndex = 0; nIndex < nSectors; ++nIndex)
 							{
-								CSector* pSector = CWorldMap::GetSector(nMapNumber, nIndex);
+                                CSector* pSector = CWorldMap::GetSectorByIndex(nMapNumber, nIndex);
 								ASSERT(pSector);
 								pSector->r_Verb(script, &g_Serv);
 							}
@@ -1111,7 +1129,7 @@ bool CServerConfig::r_LoadVal( CScript &s )
                         pszStr = s.GetArgRaw();
                         if (pszStr && *pszStr)
                         {
-                            CSector* pSector = CWorldMap::GetSector(nMapNumber, iSecNumber);
+                            CSector* pSector = CWorldMap::GetSectorByIndex(nMapNumber, iSecNumber);
                             if (pSector)
                             {
                                 CScript script(pszStr);
@@ -1727,16 +1745,17 @@ bool CServerConfig::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * 
 					else if (!strnicmp(pszCmd, "SECTOR.", 7))
 					{
 						pszCmd += 7;
-						const CSectorList* pSectors = CSectorList::Get();
+                        const CSectorList& pSectors = CSectorList::Get();
+                        const MapSectorsData& sd = pSectors.GetMapSectorData(iNumber);
 
 						if (!strnicmp(pszCmd, "SIZE", 4))
-							sVal.FormatVal(pSectors->GetSectorSize(iNumber));
+                            sVal.FormatVal(sd.iSectorSize);
 						else if (!strnicmp(pszCmd, "ROWS", 4))
-							sVal.FormatVal(pSectors->GetSectorRows(iNumber));
+                            sVal.FormatVal(sd.iSectorRows);
 						else if (!strnicmp(pszCmd, "COLS", 4))
-							sVal.FormatVal(pSectors->GetSectorCols(iNumber));
+                            sVal.FormatVal(sd.iSectorColumns);
 						else if (!strnicmp(pszCmd, "QTY", 3))
-							sVal.FormatVal(pSectors->GetSectorQty(iNumber));
+                            sVal.FormatVal(sd.iSectorQty);
 						else
 							return false;
 					}
@@ -1762,7 +1781,7 @@ bool CServerConfig::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * 
 					ptcKey = ptcKey + 6;
 					int iSecNumber = Exp_GetVal(ptcKey);
 					SKIP_SEPARATORS(ptcKey);
-					CSector* pSector = CWorldMap::GetSector(iMapNumber, iSecNumber);
+                    CSector* pSector = CWorldMap::GetSectorByIndex(iMapNumber, iSecNumber);
 					return !pSector ? false : pSector->r_WriteVal(ptcKey, sVal, pSrc);
 				}
 			}
@@ -3004,7 +3023,216 @@ uint CServerConfig::GetPacketFlag( bool bCharlist, RESDISPLAY_VERSION res, uchar
 
 //*************************************************************
 
-bool CServerConfig::LoadResourceSection( CScript * pScript )
+CResourceScript * CServerConfig::GetResourceFile( size_t i )
+{
+    if ( ! m_ResourceFiles.IsValidIndex(i) )
+        return nullptr;	// All resource files we need to get blocks from later.
+    return m_ResourceFiles[i];
+}
+
+CResourceScript * CServerConfig::FindResourceFile( lpctstr pszPath )
+{
+    ADDTOCALLSTACK("CResourceHolder::FindResourceFile");
+    // Just match the titles ( not the whole path)
+
+    lpctstr pszTitle = CScript::GetFilesTitle( pszPath );
+
+    for ( size_t i = 0; ; ++i )
+    {
+        CResourceScript * pResFile = GetResourceFile(i);
+        if ( pResFile == nullptr )
+            break;
+        lpctstr pszTitle2 = pResFile->GetFileTitle();
+        if ( ! strcmpi( pszTitle2, pszTitle ))
+            return pResFile;
+    }
+    return nullptr;
+}
+
+bool CServerConfig::OpenResourceFind( CScript &s, lpctstr pszFilename, bool fCritical )
+{
+    ADDTOCALLSTACK("CServerConfig::OpenResourceFind");
+    // Open a single resource script file.
+    // Look in the specified path.
+
+    if ( pszFilename == nullptr )
+        pszFilename = s.GetFilePath();
+
+    // search the local dir or full path first.
+    if (CSFile::FileExists(pszFilename))
+    {
+        if (s.Open(pszFilename, OF_READ | OF_NONCRIT))
+            return true;
+        if (!fCritical)
+            return false;
+    }
+
+    // next, check the script file path
+    CSString sPathName = CSFile::GetMergedFileName( m_sSCPBaseDir, pszFilename );
+    if (CSFile::FileExists(sPathName))
+    {
+        if (s.Open(sPathName, OF_READ | OF_NONCRIT))
+            return true;
+    }
+
+    // finally, strip the directory and re-check script file path
+    lpctstr pszTitle = CSFile::GetFilesTitle(pszFilename);
+    sPathName = CSFile::GetMergedFileName( m_sSCPBaseDir, pszTitle );
+    if (CSFile::FileExists(sPathName))
+    {
+        return s.Open(sPathName, OF_READ);
+    }
+
+    g_Log.Event(LOGM_INIT|LOGL_ERROR, "Can't find file '%s' in any of the expected paths!.\n", pszFilename);
+    return false;
+}
+
+
+CResourceScript * CServerConfig::AddResourceFile( lpctstr pszName )
+{
+    ADDTOCALLSTACK("CResourceHolder::AddResourceFile");
+    ASSERT(pszName != nullptr);
+    // Is this really just a dir name ?
+
+    if (strlen(pszName) >= SPHERE_MAX_PATH)
+        throw CSError(LOGL_ERROR, 0, "Filename too long!");
+
+    tchar szName[SPHERE_MAX_PATH];
+    Str_CopyLimitNull(szName, pszName, sizeof(szName));
+
+    tchar szTitle[SPHERE_MAX_PATH];
+    lpctstr ptcTitle = CScript::GetFilesTitle(szName);
+    ASSERT_ALWAYS(strlen(ptcTitle) < sizeof(szTitle));
+    Str_CopyLimitNull(szTitle, ptcTitle, sizeof(szTitle));
+
+    if ( szTitle[0] == '\0' )
+    {
+        AddResourceDir( pszName );
+        return nullptr;
+    }
+
+    lpctstr pszExt = CScript::GetFilesExt( szTitle );
+    if ( pszExt == nullptr )
+    {
+        // No file extension provided, so append .scp to the filename
+        Str_ConcatLimitNull( szName,  SPHERE_SCRIPT_EXT, sizeof(szName) );
+        Str_ConcatLimitNull( szTitle, SPHERE_SCRIPT_EXT, sizeof(szTitle) );
+    }
+
+    if ( ! strnicmp( szTitle, SPHERE_FILE "tables", strlen(SPHERE_FILE "tables")))
+    {
+        // Don't dupe this.
+        return nullptr;
+    }
+
+    // Try to prevent dupes
+    CResourceScript * pNewRes = FindResourceFile(szTitle);
+    if ( pNewRes )
+        return pNewRes;
+
+    // Find correct path
+
+
+    pNewRes = new CResourceScript();
+    if (! OpenResourceFind(static_cast<CScript&>(*pNewRes), szName))
+    {
+        delete pNewRes;
+        return nullptr;
+    }
+
+    m_ResourceFiles.emplace_back(pNewRes);
+    pNewRes->m_iResourceFileIndex = int(m_ResourceFiles.size() -1);
+    return pNewRes;
+}
+
+void CServerConfig::AddResourceDir( lpctstr pszDirName )
+{
+    ADDTOCALLSTACK("CServerConfig::AddResourceDir");
+    if ( pszDirName[0] == '\0' )
+        return;
+
+    CSString sFilePath = CSFile::GetMergedFileName( pszDirName, "*" SPHERE_SCRIPT_EXT );
+
+    CSFileList filelist;
+    int iRet = filelist.ReadDir( sFilePath, false );
+    if ( iRet < 0 )
+    {
+        // also check script file path
+        sFilePath = CSFile::GetMergedFileName(m_sSCPBaseDir, sFilePath.GetBuffer());
+
+        iRet = filelist.ReadDir( sFilePath, true );
+        if ( iRet < 0 )
+        {
+            DEBUG_ERR(( "DirList=%d for '%s'\n", iRet, pszDirName ));
+            return;
+        }
+    }
+
+    if ( iRet <= 0 )	// no files here.
+        return;
+
+    CSStringListRec * psFile = filelist.GetHead(), *psFileNext = nullptr;
+    for ( ; psFile; psFile = psFileNext )
+    {
+        psFileNext = psFile->GetNext();
+        sFilePath = CSFile::GetMergedFileName( pszDirName, *psFile );
+        AddResourceFile( sFilePath );
+    }
+}
+
+bool CServerConfig::LoadResources( CResourceScript * pScript, bool fAddSorted )
+{
+    ADDTOCALLSTACK("CServerConfig::LoadResources");
+    // Open the file then load it.
+    if ( pScript == nullptr )
+        return false;
+
+    if ( ! pScript->Open())
+    {
+        g_Log.Event(LOGL_CRIT|LOGM_INIT, "[RESOURCES] '%s' not found...\n", pScript->GetFilePath());
+        return false;
+    }
+
+    g_Log.Event(LOGM_INIT, "Loading %s\n", pScript->GetFilePath());
+
+    LoadResourcesOpen( pScript, fAddSorted );
+    pScript->Close();
+    pScript->CloseForce();
+    return true;
+}
+
+CResourceScript * CServerConfig::LoadResourcesAdd( lpctstr pszNewFileName )
+{
+    ADDTOCALLSTACK("CServerConfig::LoadResourcesAdd");
+    // Make sure this is added to my list of resource files
+    // And load it now.
+
+    CResourceScript * pScript = AddResourceFile( pszNewFileName );
+    if ( ! LoadResources(pScript, true) )
+        return nullptr;
+    return pScript;
+}
+
+void CServerConfig::LoadResourcesOpen( CScript * pScript, bool fAddSorted )
+{
+    ADDTOCALLSTACK("CServerConfig::LoadResourcesOpen");
+    // Load an already open resource file.
+
+    ASSERT(pScript);
+    ASSERT( pScript->HasCache() );
+
+    int iSections = 0;
+    while ( pScript->FindNextSection() )
+    {
+        LoadResourceSection( pScript, fAddSorted );
+        ++iSections;
+    }
+
+    if ( ! iSections )
+        DEBUG_WARN(( "No resource sections in '%s'\n", pScript->GetFilePath()));
+}
+
+bool CServerConfig::LoadResourceSection( CScript * pScript, bool fInsertSorted )
 {
 	ADDTOCALLSTACK("CServerConfig::LoadResourceSection");
 	// Index or read any resource sections we know how to handle.
@@ -3056,7 +3284,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 	if (( restype == RES_WORLDSCRIPT ) || ( restype == RES_WS ))
 	{
 		const lpctstr pszDef = pScript->GetArgStr();
-		CVarDefCont * pVarBase = g_Exp.m_VarResDefs.GetKey( pszDef );
+        CVarDefCont * pVarBase = g_ExprGlobals.mtEngineLockedReader()->m_VarResDefs.GetKey( pszDef );
 		pVarNum = nullptr;
 		if ( pVarBase )
 			pVarNum = dynamic_cast <CVarDefContNum*>( pVarBase );
@@ -3116,13 +3344,17 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 	if ( m_ResourceList.ContainsKey( const_cast<tchar *>(pszSection) ))
 	{
         // Add to DEFLIST
-		CListDefCont* pListBase = g_Exp.m_ListInternals.GetKey(pszSection);
+        auto rw = g_ExprGlobals.mtEngineLockedWriter();
+        CListDefCont* pListBase = rw->m_ListInternals.GetKey(pszSection);
 		if ( !pListBase )
-			pListBase = g_Exp.m_ListInternals.AddList(pszSection);
+            pListBase = rw->m_ListInternals.AddList(pszSection);
 
 		if ( pListBase )
 			pListBase->r_LoadVal(pScript->GetArgStr());
 	}
+
+    auto _resHashAddFunction = fInsertSorted ? &CResourceHash::AddSortKey : &CResourceHash::AddUnsortedKey;
+    #define RESHASH_ADD (m_ResHash.* _resHashAddFunction)
 
 	switch ( restype )
 	{
@@ -3178,12 +3410,13 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			if ( fNewStyleDef )
 			{
 				//	search for this.
+                auto gread = g_ExprGlobals.mtEngineLockedReader();
 				size_t l;
 				for ( l = 0; l < DEFMSG_QTY; ++l )
 				{
-					if ( !strcmpi(ptcKey, g_Exp.sm_szMsgNames[l]) )
+                    if ( !strcmpi(ptcKey, gread->sm_szDefMsgNames[l]) )
 					{
-						Str_CopyLimitNull(g_Exp.sm_szMessages[l], pScript->GetArgStr(), sizeof(g_Exp.sm_szMessages[l]));
+                        Str_CopyLimitNull(gread->sm_szDefMessages[l], pScript->GetArgStr(), sizeof(CExprGlobals::sm_szDefMessages[l]));
 						break;
 					}
 				}
@@ -3193,20 +3426,23 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			}
 			else
 			{
-				g_Exp.m_VarDefs.SetStr(ptcKey, false, pScript->GetArgStr(), false);
+                g_ExprGlobals.mtEngineLockedWriter()->m_VarDefs.SetStr(ptcKey, false, pScript->GetArgStr(), false);
 			}
 		}
+
 		return true;
 
 	case RES_RESDEFNAME:
+    {
 		// just get a block of resource aliases (like a classic DEF).
+        auto gwrite = g_ExprGlobals.mtEngineLockedWriter();
 		while (pScript->ReadKeyParse())
 		{
 			const lpctstr ptcKey = pScript->GetKey();
-			g_Exp.m_VarResDefs.SetStr(ptcKey, false, pScript->GetArgStr(), false);
+            gwrite->m_VarResDefs.SetStr(ptcKey, false, pScript->GetArgStr(), false);
 		}
 		return true;
-
+    }
 	case RES_RESOURCELIST:
 		{
 			while ( pScript->ReadKey() )
@@ -3425,7 +3661,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			CResourceScript* pLinkResScript = dynamic_cast<CResourceScript*>(pScript);
 			if (pLinkResScript != nullptr)
 				pNewLink->SetLink(pLinkResScript);	// So later i can retrieve m_iResourceFileIndex and m_iLineNum from the CResourceScript
-			m_ResHash.AddSortKey( rid, pNewLink );
+            RESHASH_ADD( rid, pNewLink );
 		}
 
 		ASSERT(pScript);
@@ -3461,7 +3697,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			CResourceScript* pLinkResScript = dynamic_cast<CResourceScript*>(pScript);
 			if (pLinkResScript != nullptr)
 				pNewLink->SetLink(pLinkResScript);	// So later i can retrieve m_iResourceFileIndex and m_iLineNum from the CResourceScript
-			m_ResHash.AddSortKey( rid, pNewLink );
+            RESHASH_ADD( rid, pNewLink );
 		}
 		break;
 	case RES_DIALOG:
@@ -3479,7 +3715,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			CResourceScript* pLinkResScript = dynamic_cast<CResourceScript*>(pScript);
 			if (pLinkResScript != nullptr)
 				pNewLink->SetLink(pLinkResScript);	// So later i can retrieve m_iResourceFileIndex and m_iLineNum from the CResourceScript
-			m_ResHash.AddSortKey( rid, pNewLink );
+            RESHASH_ADD( rid, pNewLink );
 		}
 		break;
 
@@ -3498,7 +3734,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			CResourceScript* pLinkResScript = dynamic_cast<CResourceScript*>(pScript);
 			if (pLinkResScript != nullptr)
 				pNewLink->SetLink(pLinkResScript);	// So later i can retrieve m_iResourceFileIndex and m_iLineNum from the CResourceScript
-			m_ResHash.AddSortKey( rid, pNewLink );
+            RESHASH_ADD( rid, pNewLink );
 		}
 		{
 			CScriptLineContext LineContext = pScript->GetContext();
@@ -3530,7 +3766,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			{
 				pNewDef = pRegion;
 				ASSERT(pNewDef);
-				m_ResHash.AddSortKey( rid, pRegion );
+                RESHASH_ADD( rid, pRegion );
 				// if it's old style but has a defname, it's already set via r_Load,
 				// so this will do nothing, which is good
 				// if ( !fNewStyleDef )
@@ -3562,7 +3798,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			}
 			else
 			{
-				m_ResHash.AddSortKey( rid, pRegion );
+                RESHASH_ADD( rid, pRegion );
 				// if it's old style but has a defname, it's already set via r_Load,
 				// so this will do nothing, which is good
 				// if ( !fNewStyleDef )
@@ -3587,7 +3823,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			CResourceScript* pLinkResScript = dynamic_cast<CResourceScript*>(pScript);
 			if (pLinkResScript != nullptr)
 				pNewLink->SetLink(pLinkResScript);	// So later i can retrieve m_iResourceFileIndex and m_iLineNum from the CResourceScript
-			m_ResHash.AddSortKey( rid, pNewLink );
+            RESHASH_ADD( rid, pNewLink );
 		}
 		{
 			CScriptLineContext LineContext = pScript->GetContext();
@@ -3612,7 +3848,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
                 CResourceScript* pLinkResScript = dynamic_cast<CResourceScript*>(pScript);
                 if (pLinkResScript != nullptr)
                     pNewLink->SetLink(pLinkResScript);	// So later i can retrieve m_iResourceFileIndex and m_iLineNum from the CResourceScript
-                m_ResHash.AddSortKey(rid, pNewLink);
+                RESHASH_ADD(rid, pNewLink);
             }
         }
         {
@@ -3636,7 +3872,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			CResourceScript* pLinkResScript = dynamic_cast<CResourceScript*>(pScript);
 			if (pLinkResScript != nullptr)
 				pNewLink->SetLink(pLinkResScript);	// So later i can retrieve m_iResourceFileIndex and m_iLineNum from the CResourceScript
-			m_ResHash.AddSortKey( rid, pNewLink );
+            RESHASH_ADD( rid, pNewLink );
 		}
 		{
 			CScriptLineContext LineContext = pScript->GetContext();
@@ -3672,7 +3908,7 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 			CResourceScript* pLinkResScript = dynamic_cast<CResourceScript*>(pScript);
 			if (pLinkResScript != nullptr)
 				pNewLink->SetLink(pLinkResScript);	// So later i can retrieve m_iResourceFileIndex and m_iLineNum from the CResourceScript
-			m_ResHash.AddSortKey( rid, pNewLink );
+            RESHASH_ADD( rid, pNewLink );
 		}
 		break;
 
@@ -3772,24 +4008,38 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 		return true;
 
 	case RES_TYPEDEFS:
-		// just get a block of defs.
-		while ( pScript->ReadKeyParse())
-		{
-			CResourceID ridnew( RES_TYPEDEF, pScript->GetArgVal() );
-			pPrvDef = RegisteredResourceGetDef(rid);
-			if ( pPrvDef )
-			{
-				pPrvDef->SetResourceName( pScript->GetKey() );
-			}
-			else
-			{
-				CResourceDef * pResDef = new CItemTypeDef( ridnew );
-				pResDef->SetResourceName( pScript->GetKey() );
-				ASSERT(pResDef);
-				m_ResHash.AddSortKey( ridnew, pResDef );
-			}
-		}
-		return true;
+        {
+            // just get a block of defs.
+
+            //pPrvDef = RegisteredResourceGetDef(rid); // useless
+            while ( pScript->ReadKeyParse())
+            {
+                const lpctstr ptcName = pScript->GetKey();
+                const int iIndex = pScript->GetArgVal();
+                CResourceID ridnew( RES_TYPEDEF, iIndex );
+
+                CResourceDef *pResDef = RegisteredResourceGetDef(ridnew);
+                // Do we already have a TYPEDEF with the same index?
+                if (pResDef)
+                {
+                    pResDef->SetResourceName( ptcName );   // update name
+                }
+                else
+                {
+                    if (!ptcName || (*ptcName == '\0'))
+                    {
+                        g_Log.EventError("Empty typedef name for id %d?\n", iIndex);
+                        continue;
+                    }
+                    pResDef = new CItemTypeDef( ridnew );
+                    ASSERT(pResDef);
+                    pResDef->SetResourceName( ptcName );
+                    RESHASH_ADD( ridnew, pResDef );
+                }
+            }
+
+            return true;
+        }
 
 	case RES_STARTS:
 		{
@@ -3838,12 +4088,12 @@ bool CServerConfig::LoadResourceSection( CScript * pScript )
 				ptcKey = ptcKey + 4;
 
             lpctstr ptcArg = pScript->GetArgStr( &fQuoted );
-			g_Exp.m_VarGlobals.SetStr( ptcKey, fQuoted, ptcArg );
+            g_ExprGlobals.mtEngineLockedWriter()->m_VarGlobals.SetStr( ptcKey, fQuoted, ptcArg );
 		}
 		return true;
 	case RES_WORLDLISTS:
 		{
-			CListDefCont* pListBase = g_Exp.m_ListGlobals.AddList(pScript->GetArgStr());
+            CListDefCont* pListBase = g_ExprGlobals.mtEngineLockedWriter()->m_ListGlobals.AddList(pScript->GetArgStr());
 
 			if ( !pListBase )
 			{
@@ -4096,8 +4346,7 @@ CResourceID CServerConfig::ResourceGetNewID( RES_TYPE restype, lpctstr pszName, 
 		break;
 	}
 
-
-	int iIndex;
+    int iIndex;
 	if ( pszName )
 	{
 		if ( pszName[0] == '\0' )	// absence of resourceid = index 0
@@ -4153,7 +4402,7 @@ CResourceID CServerConfig::ResourceGetNewID( RES_TYPE restype, lpctstr pszName, 
 		}
 
 
-		CVarDefCont * pVarBase = g_Exp.m_VarResDefs.GetKey( pszName );
+        CVarDefCont * pVarBase = g_ExprGlobals.mtEngineLockedReader()->m_VarResDefs.GetKey( pszName );
 		if ( pVarBase )
 		{
 			// An existing VarDef with the same name ?
@@ -4323,7 +4572,7 @@ CResourceID CServerConfig::ResourceGetNewID( RES_TYPE restype, lpctstr pszName, 
         int iRandIndex = iIndex + g_Rand.GetVal(iHashRange);
         rid = CResourceID(restype, iRandIndex, wPage);
 
-        const bool fCheckPage = (pszName && (g_Exp.m_VarResDefs.GetKeyNum(pszName) != 0));
+        const bool fCheckPage = (pszName && (g_ExprGlobals.mtEngineLockedReader()->m_VarResDefs.GetKeyNum(pszName) != 0));
 		while (true)
 		{
             if (fCheckPage)
@@ -4348,7 +4597,7 @@ CResourceID CServerConfig::ResourceGetNewID( RES_TYPE restype, lpctstr pszName, 
 
 	if ( pszName )
 	{
-		CVarDefContNum* pVarTemp = g_Exp.m_VarResDefs.SetNum( pszName, rid.GetPrivateUID() );
+        CVarDefContNum* pVarTemp = g_ExprGlobals.mtEngineLockedWriter()->m_VarResDefs.SetNum( pszName, rid.GetPrivateUID() );
         ASSERT(pVarTemp);
 		*ppVarNum = pVarTemp;
 	}
@@ -4372,8 +4621,9 @@ sl::smart_ptr_view<CResourceDef> CServerConfig::RegisteredResourceGetDefRef(cons
 	if (!rid.IsValidResource())
 		return {};
 
-	int index = rid.GetResIndex();
-	switch (rid.GetResType())
+    const int iIndex = rid.GetResIndex();
+    const RES_TYPE iType = rid.GetResType();
+    switch (iType)
 	{
 	case RES_WEBPAGE:
 	{
@@ -4384,14 +4634,14 @@ sl::smart_ptr_view<CResourceDef> CServerConfig::RegisteredResourceGetDefRef(cons
 	}
 
 	case RES_SKILL:
-		if (!m_SkillIndexDefs.valid_index(index))
+        if (!m_SkillIndexDefs.valid_index(iIndex))
 			return {};
-		return m_SkillIndexDefs[index];
+        return m_SkillIndexDefs[iIndex];
 
 	case RES_SPELL:
-		if (!m_SpellDefs.valid_index(index))
+        if (!m_SpellDefs.valid_index(iIndex))
 			return {};
-		return m_SpellDefs[index];
+        return m_SpellDefs[iIndex];
 
 	case RES_UNKNOWN:	// legal to use this as a ref but it is unknown
 		return {};
@@ -4436,6 +4686,58 @@ CResourceDef* CServerConfig::RegisteredResourceGetDefByName(RES_TYPE restype, lp
 {
 	ADDTOCALLSTACK("CServerConfig::RegisteredResourceGetDefByName");
 	return RegisteredResourceGetDefRefByName(restype, ptcName, wPage).get();
+}
+
+lpctstr CServerConfig::ResourceTypedGetName(const CResourceIDBase& rid, RES_TYPE iExpectedType, lptstr* ptcOutError)
+{
+    ADDTOCALLSTACK("CServerConfig::ResourceTypedGetName");
+    CResourceID ridValid = CResourceID(iExpectedType, 0);
+    if (!rid.IsValidResource())
+    {
+        if (rid.GetResIndex() != 0)
+        {
+            if (ptcOutError)
+            {
+                *ptcOutError = Str_GetTemp();
+                snprintf(*ptcOutError, Str_TempLength(), "Expected a valid resource. Ignoring it/Converting it to an empty one.\n");
+            }
+        }
+    }
+    else if (rid.GetResType() != iExpectedType)
+    {
+        if (ptcOutError)
+        {
+            *ptcOutError = Str_GetTemp();
+            snprintf(*ptcOutError, Str_TempLength(), "Expected resource with type %d, got %d. Ignoring it/Converting it to an empty one.\n",
+                iExpectedType, rid.GetResType());
+        }
+    }
+    else
+    {
+        ridValid = rid;
+    }
+    return ResourceGetName(ridValid); // Even it's 0, we should return it's name, as it can be mr_nothing.
+}
+
+lpctstr CServerConfig::ResourceGetName( const CResourceID& rid ) const
+{
+    ADDTOCALLSTACK("CServerConfig::ResourceGetName");
+    // Get a portable name for the resource id type.
+
+    if (rid.IsValidResource())
+    {
+        const CResourceDef* pResourceDef = RegisteredResourceGetDef(rid);
+        if (pResourceDef)
+            return pResourceDef->GetResourceName();
+    }
+
+    tchar * pszTmp = Str_GetTemp();
+    ASSERT(pszTmp);
+    if ( !rid.IsValidUID() )
+        snprintf( pszTmp, Str_TempLength(), "%d", (int)rid.GetPrivateUID() );
+    else
+        snprintf( pszTmp, Str_TempLength(), "0%" PRIx32, rid.GetResIndex() );
+    return pszTmp;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4517,6 +4819,7 @@ void CServerConfig::PrintEFOFFlags(bool bEF, bool bOF, CTextConsole *pSrc)
         if ( IsSetOF(OF_OWNoDropCarriedItem) )		catresname(zOptionFlags, "OWNoDropCarriedItem");
 		if ( IsSetOF(OF_AllowContainerInsideContainer)) catresname(zOptionFlags, "AllowContainerInsideContainer");
         if ( IsSetOF(OF_VendorStockLimit) )		    catresname(zOptionFlags, "VendorStockLimit");
+		if ( IsSetOF(OF_NoDclickEquip) )				catresname(zOptionFlags, "NoDclickEquip");
 
 		if ( zOptionFlags[0] != '\0' )
 		{
@@ -4557,13 +4860,31 @@ void CServerConfig::PrintEFOFFlags(bool bEF, bool bOF, CTextConsole *pSrc)
 #undef catresname
 }
 
-bool CServerConfig::LoadIni( bool fTest )
+bool CServerConfig::LoadIni(bool fTest)
 {
 	ADDTOCALLSTACK("CServerConfig::LoadIni");
+
+    char filename[SPHERE_MAX_PATH] = SPHERE_FILE ".ini";
+
+    // Check, if CLI argument -I=/path/to/ini/directory/ was used.
+    if (m_iniDirectory[0] != '\0')
+    {
+        int const ret = snprintf(filename, SPHERE_MAX_PATH, "%s" SPHERE_FILE ".ini", m_iniDirectory);
+        if (ret < 0)
+        {
+			g_Log.Event(LOGL_FATAL|LOGM_INIT|LOGF_CONSOLE_ONLY, "Path to %s" SPHERE_FILE ".ini is too long.\n", m_iniDirectory);
+            return false;
+        }
+    }
+    else
+    {
+        Str_CopyLimitNull(filename, SPHERE_FILE ".ini", SPHERE_MAX_PATH);
+    }
+
 	// Load my INI file first.
-	if ( ! OpenResourceFind( m_scpIni, SPHERE_FILE ".ini", !fTest )) // Open script file
+	if (!OpenResourceFind(m_scpIni, filename, !fTest))
 	{
-		if( !fTest )
+		if (!fTest)
 		{
 			g_Log.Event(LOGL_FATAL|LOGM_INIT|LOGF_CONSOLE_ONLY, SPHERE_FILE ".ini has not been found.\n");
 			g_Log.Event(LOGL_FATAL|LOGM_INIT|LOGF_CONSOLE_ONLY, "Download a sample sphere.ini from https://github.com/Sphereserver/Source-X/tree/master/src\n");
@@ -4571,7 +4892,7 @@ bool CServerConfig::LoadIni( bool fTest )
 		return false;
 	}
 
-	LoadResourcesOpen(&m_scpIni);
+    LoadResourcesOpen(&m_scpIni, true);
 	m_scpIni.Close();
 	m_scpIni.CloseForce();
 
@@ -4581,18 +4902,36 @@ bool CServerConfig::LoadIni( bool fTest )
 bool CServerConfig::LoadCryptIni( void )
 {
 	ADDTOCALLSTACK("CServerConfig::LoadCryptIni");
-	if ( ! OpenResourceFind( m_scpCryptIni, SPHERE_FILE "Crypt.ini", false ) )
+
+    char filename[SPHERE_MAX_PATH] = SPHERE_FILE "Crypt.ini";
+
+    // Check, if CLI argument -I=/path/to/ini/directory/ was used.
+    if (m_iniDirectory[0] != '\0')
+    {
+        int const ret = snprintf(filename, SPHERE_MAX_PATH, "%s" SPHERE_FILE "Crypt.ini", m_iniDirectory);
+        if (ret < 0)
+        {
+            g_Log.Event(LOGL_FATAL|LOGM_INIT|LOGF_CONSOLE_ONLY, "Path to %s" SPHERE_FILE "Crypt.ini is too long.\n", m_iniDirectory);
+            return false;
+        }
+    }
+    else
+    {
+        Str_CopyLimitNull(filename, SPHERE_FILE "Crypt.ini", SPHERE_MAX_PATH);
+    }
+
+    if (!OpenResourceFind(m_scpCryptIni, filename, false))
 	{
-		g_Log.Event( LOGL_WARN|LOGM_INIT, "Could not open " SPHERE_FILE "Crypt.ini, encryption might not be available\n");
+		g_Log.Event(LOGL_WARN|LOGM_INIT, "Could not open " SPHERE_FILE "Crypt.ini, encryption might not be available\n");
 		return false;
 	}
 
-	LoadResourcesOpen(&m_scpCryptIni);
+    LoadResourcesOpen(&m_scpCryptIni, true);
 	m_scpCryptIni.Close();
 	m_scpCryptIni.CloseForce();
 
-	g_Log.Event( LOGM_INIT, "Loaded %" PRIuSIZE_T " client encryption keys.\n",
-		CCryptoKeysHolder::get()->client_keys.size() );
+	g_Log.Event(LOGM_INIT, "Loaded %" PRIuSIZE_T " client encryption keys.\n",
+		CCryptoKeysHolder::get()->client_keys.size());
 
 	return true;
 }
@@ -4709,7 +5048,7 @@ bool CServerConfig::Load( bool fResync )
 		}
 
         g_Log.Event(LOGL_EVENT|LOGM_INIT, "Loading table definitions file (" SPHERE_FILE "tables" SPHERE_SCRIPT_EXT ")...\n");
-		LoadResourcesOpen(&m_scpTables);
+        LoadResourcesOpen(&m_scpTables, true);
 		m_scpTables.Close();
 	}
 	else
@@ -4744,16 +5083,28 @@ bool CServerConfig::Load( bool fResync )
 		if ( !pResFile )
 			break;
 
-		if ( !fResync )
-			LoadResources( pResFile );
-		else
+        if ( !fResync )
+        {
+            // It's the startup load, sort everything just once at the end?
+            // TODO: not a good idea for now, because we might reference a resource while loading another resource,
+            //  at the current state.
+            //  Also, is it worth it by a performance cost? It looks like the greatest part of the cpu time is consumed in unique_ptr moving.
+            LoadResources( pResFile, true /*false*/ );
+        }
+        else
 			pResFile->ReSync();
 
 		g_Serv.PrintPercent( (size_t)(j + 1), count);
 	}
 
+    //if (!fResync)
+    //    m_ResHash.SortStep();
+
+    g_ExprGlobals.mtEngineLockedWriter()->UpdateDefMsgDependentData();
+
 	// Now that we have parsed every script, we can end the configuration of some resources...
-		// ROOMs have to inherit stuff from the parent AREADEF
+
+    // ROOMs have to inherit stuff from the parent AREADEF
 	for (CRegion* pCurRegion : m_RegionDefs)
 	{
 		const RES_TYPE resType = pCurRegion->GetResourceID().GetResType();
@@ -4804,7 +5155,7 @@ bool CServerConfig::Load( bool fResync )
 		// must have at least 1 skill class.
 		CSkillClassDef * pSkillClass = new CSkillClassDef( CResourceID( RES_SKILLCLASS ));
 		ASSERT(pSkillClass);
-		m_ResHash.AddSortKey( CResourceID( RES_SKILLCLASS, 0 ), pSkillClass );
+        m_ResHash.AddSortKey( CResourceID( RES_SKILLCLASS, 0 ), pSkillClass );
 	}
 
 	if ( !fResync )
@@ -4895,26 +5246,47 @@ bool CServerConfig::Load( bool fResync )
 
 lpctstr CServerConfig::GetDefaultMsg(int lKeyNum)
 {
-	ADDTOCALLSTACK("CServerConfig::GetDefaultMsg");
+    ADDTOCALLSTACK("CServerConfig::GetDefaultMsg(int)");
 	if (( lKeyNum < 0 ) || ( lKeyNum >= DEFMSG_QTY ))
 	{
 		g_Log.EventError("Defmessage %d out of range [0..%d]\n", lKeyNum, DEFMSG_QTY-1);
 		return "";
 	}
-	return g_Exp.sm_szMessages[lKeyNum];
+
+#if MT_ENGINES
+    auto gReader = g_ExprGlobals.mtEngineLockedReader();
+    lpctstr ptcRet = Str_mtEngineGetSafeTemp(CExprGlobals::sm_szDefMessages[lKeyNum]);
+    return ptcRet;
+#else
+    return Str_mtEngineGetSafeTemp(CExprGlobals::sm_szDefMessages[lKeyNum]);
+#endif
 }
 
 lpctstr CServerConfig::GetDefaultMsg(lpctstr ptcKey)
 {
-	ADDTOCALLSTACK("CServerConfig::GetDefaultMsg");
-	for (int i = 0; i < DEFMSG_QTY; ++i )
-	{
-		if ( !strcmpi(ptcKey, g_Exp.sm_szMsgNames[i]) )
-			return g_Exp.sm_szMessages[i];
+    ADDTOCALLSTACK("CServerConfig::GetDefaultMsg(lpctstr)");
+    auto gReader = g_ExprGlobals.mtEngineLockedReader();
 
+    uint i;
+    for (i = 0; i < DEFMSG_QTY; ++i )
+	{
+        if ( !strcmpi(ptcKey, gReader->sm_szDefMsgNames[i]) )
+            break;
 	}
-	g_Log.EventError("Defmessage \"%s\" non existent\n", ptcKey);
-	return "";
+
+    if (i == DEFMSG_QTY)
+    {
+        g_Log.EventError("Defmessage \"%s\" non existent\n", ptcKey);
+        return "";
+    }
+
+#if MT_ENGINES
+    auto gReader = g_ExprGlobals.mtEngineLockedReader();
+    lpctstr ptcRet = Str_mtEngineGetSafeTemp(CExprGlobals::sm_szDefMessages[i]);
+    return ptcRet;
+#else
+    return Str_mtEngineGetSafeTemp(CExprGlobals::sm_szDefMessages[i]);
+#endif
 }
 
 bool CServerConfig::GenerateDefname(tchar *pObjectName, size_t iInputLength, lpctstr pPrefix, TemporaryString *pOutput, bool bCheckConflict, CVarDefMap* vDefnames)
@@ -4971,10 +5343,11 @@ bool CServerConfig::GenerateDefname(tchar *pObjectName, size_t iInputLength, lpc
 		size_t iEnd = iOut;
 		int iAttempts = 1;
 
+        auto gReader = g_ExprGlobals.mtEngineLockedReader();
 		for (;;)
 		{
 			bool isValid = true;
-			if (g_Exp.m_VarResDefs.GetKey(buf) != nullptr)
+            if (gReader->m_VarResDefs.GetKey(buf) != nullptr)
 			{
 				// check loaded defnames
 				isValid = false;

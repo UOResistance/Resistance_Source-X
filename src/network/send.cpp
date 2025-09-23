@@ -1,6 +1,6 @@
 
 #include "../common/resource/CResourceLock.h"
-#include "../common/CExpression.h"
+//#include "../common/CExpression.h" // included in the precompiled header
 #include "../common/CLog.h"
 #include "../common/CUOInstall.h"
 #include "../game/chars/CChar.h"
@@ -17,7 +17,9 @@
 #include "../game/items/CItemVendable.h"
 #include "../game/uo_files/uofiles_enums_creid.h"
 #include "../game/CServer.h"
+#include "../game/CServerConfig.h"
 #include "../game/CWorldGameTime.h"
+#include "CNetState.h"
 #include "../game/triggers.h"
 #include "CNetworkManager.h"
 #include "send.h"
@@ -120,6 +122,11 @@ PacketCombatDamage::PacketCombatDamage(const CClient* target, word damage, CUID 
 	push(target);
 }
 
+bool PacketCombatDamage::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_NEWDAMAGE);
+}
+
 
 /***************************************************************************
  *
@@ -153,14 +160,14 @@ PacketObjectStatus::PacketObjectStatus(CClient* target, CObjBase* object) : Pack
         IsTrigUsed(TRIGGER_DISPLAYNAME) &&
         (objectChar != character)) //Avoid launch trigger if the target is the same character
     {
-        CScriptTriggerArgs args;
-        args.m_s1 = object->GetName();
-        args.m_iN1 =2;//Trigger use on status
+        CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+        pScriptArgs->m_s1 = object->GetName();
+        pScriptArgs->m_iN1 =2;//Trigger use on status
         
-        if (objectChar->OnTrigger(CTRIG_DisplayName, character, &args) == TRIGRET_RET_TRUE)
+        if (objectChar->OnTrigger(CTRIG_DisplayName, pScriptArgs, character) == TRIGRET_RET_TRUE)
         {
             bCustomName = 1;
-            sShowName = args.m_s1;
+            sShowName = pScriptArgs->m_s1;
         }
     }
     if (bCustomName)
@@ -442,6 +449,11 @@ bool PacketHealthBarUpdateNew::onSend(const CClient* client)
     return client->CanSee(m_character.CharFind());
 }
 
+bool PacketHealthBarUpdateNew::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientEnhanced();
+}
+
 /***************************************************************************
  *
  *
@@ -473,6 +485,11 @@ bool PacketHealthBarUpdate::onSend(const CClient* client)
 		return true;
 
 	return client->CanSee(m_character.CharFind());
+}
+
+bool PacketHealthBarUpdate::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_SA) || state->isClientKR();
 }
 
 
@@ -652,7 +669,8 @@ PacketPlayerStart::PacketPlayerStart(const CClient* target) : PacketSend(XCMD_St
 	writeInt16((word)(character->GetDispID()));
 	writeInt16(pt.m_x);
 	writeInt16(pt.m_y);
-	writeInt16(pt.m_z);
+    writeByte(0);
+	writeByte(pt.m_z);
 	writeByte(character->GetDirFlag());
 	writeByte(0);
 	writeInt32(0xffffffff);
@@ -1048,6 +1066,11 @@ PacketDropAccepted::PacketDropAccepted(const CClient* target) : PacketSend(XCMD_
 	ADDTOCALLSTACK("PacketDropAccepted::PacketDropAccepted");
 
 	push(target);
+}
+
+bool PacketDropAccepted::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientKR();
 }
 
 
@@ -2574,6 +2597,11 @@ PacketChangeCharacter::PacketChangeCharacter(CClient* target) : PacketSend(XCMD_
 	push(target);
 }
 
+bool PacketChangeCharacter::CanSendTo(const CNetState* state) // static
+{
+    return !(state->isClientKR() || state->isClientEnhanced());
+}
+
 
 /***************************************************************************
  *
@@ -2662,13 +2690,14 @@ PacketPaperdoll::PacketPaperdoll(const CClient* target, CChar* character) : Pack
     if (IsTrigUsed(TRIGGER_DISPLAYNAME) && (target->GetChar() != character)) //Avoid launch trigger if the target is the same character
     {
         CChar* CharacterCast = const_cast<CChar*>(target->GetChar()); //CONST_CAST très dangereux!  Work around cheap
-        CScriptTriggerArgs args;
-        args.m_s1 = character->GetName();
-        args.m_iN1 = 1;//Trigger use on paperdoll
-        if (character->OnTrigger(CTRIG_DisplayName, CharacterCast, &args) == TRIGRET_RET_TRUE)
+        CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+        
+        pScriptArgs->m_s1 = character->GetName();
+        pScriptArgs->m_iN1 = 1;//Trigger use on paperdoll
+        if (character->OnTrigger(CTRIG_DisplayName, pScriptArgs, CharacterCast) == TRIGRET_RET_TRUE)
         {
             bCustomName = 1;
-            sShowName = args.m_s1;
+            sShowName = pScriptArgs->m_s1;
         }
     }
 
@@ -4141,6 +4170,11 @@ bool PacketPropertyListVersionOld::onSend(const CClient* client)
 	return true;
 }
 
+bool PacketPropertyListVersionOld::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_TOOLTIP);
+}
+
 
 /***************************************************************************
  *
@@ -4219,7 +4253,7 @@ void PacketDisplayPopup::finalise(void)
  *
  *
  ***************************************************************************/
-PacketCloseUIWindow::PacketCloseUIWindow(const CClient* target, const CObjBase* obj, UIWindow command) : PacketExtended(EXTDATA_CloseUI_Window, 13, PRI_NORMAL)
+PacketCloseUIWindow::PacketCloseUIWindow(const CClient* target, const CObjBase* obj, PacketCloseUIWindowType command) : PacketExtended(EXTDATA_CloseUI_Window, 13, PRI_NORMAL)
 {
 	ADDTOCALLSTACK("PacketCloseUIWindow::PacketCloseUIWindow");
 
@@ -4371,6 +4405,10 @@ PacketStatLocks::PacketStatLocks(const CClient* target, const CChar* character) 
     push(target);
 }
 
+bool PacketStatLocks::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_STATLOCKS);
+}
 
 /***************************************************************************
 *
@@ -4414,6 +4452,11 @@ PacketSpellbookContent::PacketSpellbookContent(const CClient* target, const CIte
 	push(target);
 }
 
+bool PacketSpellbookContent::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_SPELLBOOK);
+}
+
 
 /***************************************************************************
  *
@@ -4452,6 +4495,11 @@ PacketHouseBeginCustomise::PacketHouseBeginCustomise(const CClient* target, cons
 	writeByte(0xFF);
 
 	push(target);
+}
+
+bool PacketHouseBeginCustomise::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_CUSTOMMULTI) || state->isClientKR() || state->isClientEnhanced();
 }
 
 
@@ -4498,6 +4546,10 @@ PacketCombatDamageOld::PacketCombatDamageOld(const CClient* target, byte damage,
 	push(target);
 }
 
+bool PacketCombatDamageOld::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_DAMAGE);
+}
 
 /***************************************************************************
  *
@@ -4714,6 +4766,10 @@ PacketDisplayBookNew::PacketDisplayBookNew(const CClient* target, CItem* book) :
 	push(target);
 }
 
+bool PacketDisplayBookNew::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_NEWBOOK) || state->isClientKR() || state->isClientEnhanced();
+}
 
 /***************************************************************************
  *
@@ -4787,6 +4843,11 @@ bool PacketPropertyList::hasExpired(int64 iTimeout) const
 {
 	ADDTOCALLSTACK("PacketPropertyList::hasExpired");
 	return (m_time + iTimeout) < CWorldGameTime::GetCurrentTime().GetTimeRaw();
+}
+
+bool PacketPropertyList::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_TOOLTIP);
 }
 
 
@@ -4960,6 +5021,11 @@ void PacketHouseDesign::finalise(void)
 	seek(endPosition);
 }
 
+bool PacketHouseDesign::CanSendToClient(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_CUSTOMMULTI) || state->isClientKR() || state->isClientEnhanced();
+}
+
 
 /***************************************************************************
  *
@@ -4997,6 +5063,11 @@ bool PacketPropertyListVersion::onSend(const CClient* client)
 		return false;
 
 	return true;
+}
+
+bool PacketPropertyListVersion::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_TOOLTIPHASH);
 }
 
 
@@ -5084,6 +5155,11 @@ PacketBuff::PacketBuff(const CClient* target, const BUFF_ICONS iconId) : PacketS
 	push(target);
 }
 
+bool PacketBuff::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_BUFFS);
+}
+
 /***************************************************************************
  *
  *
@@ -5141,6 +5217,11 @@ PacketWaypointAdd::PacketWaypointAdd(const CClient *target, CObjBase *object, MA
     push(target);
 }
 
+bool PacketWaypointAdd::CanSendTo(const CNetState *state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_MAPWAYPOINT) || state->isClientKR() || state->isClientEnhanced();
+}
+
 /***************************************************************************
 *
 *
@@ -5160,6 +5241,11 @@ PacketWaypointRemove::PacketWaypointRemove(const CClient *target, CObjBase *obje
     push(target);
 }
 
+bool PacketWaypointRemove::CanSendTo(const CNetState *state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_MAPWAYPOINT) || state->isClientKR() || state->isClientEnhanced();
+}
+
 /***************************************************************************
  *
  *
@@ -5175,6 +5261,12 @@ PacketToggleHotbar::PacketToggleHotbar(const CClient* target, bool enable) : Pac
 
 	push(target);
 }
+
+bool PacketToggleHotbar::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientKR();
+}
+
 
 /***************************************************************************
  *
@@ -5198,6 +5290,11 @@ PacketTimeSyncResponse::PacketTimeSyncResponse(const CClient* target) : PacketSe
 	writeInt64(llTime);
 
 	push(target);
+}
+
+bool PacketTimeSyncResponse::CanSendTo(const CNetState* state) //static
+{
+    return state->isClientVersionNumber(MINCLIVER_SA) || state->isClientEnhanced() || state->isClientKR();
 }
 
 
@@ -5301,6 +5398,11 @@ PacketItemWorldNew::PacketItemWorldNew(const CClient* target, const CChar* mobil
 	push(target);
 }
 
+bool PacketItemWorldNew::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_SA) || state->isClientEnhanced();
+}
+
 /***************************************************************************
  *
  *
@@ -5337,6 +5439,11 @@ PacketDisplayMapNew::PacketDisplayMapNew(const CClient* target, const CItemMap* 
 	writeInt16((word)(rect.m_map));
 
 	push(target);
+}
+
+bool PacketDisplayMapNew::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_NEWMAPDISPLAY) || state->isClientEnhanced();
 }
 
 
@@ -5468,6 +5575,12 @@ PacketContainer::PacketContainer(const CClient* target, CObjBase** objects, uint
 	push(target);
 }
 
+bool PacketContainer::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_HS);
+}
+
+
 /***************************************************************************
  *
  *
@@ -5490,4 +5603,9 @@ PacketGlobalChat::PacketGlobalChat(const CClient* target, byte unknown, byte act
 
 	trim();
 	push(target);
+}
+
+bool PacketGlobalChat::CanSendTo(const CNetState* state) // static
+{
+    return state->isClientVersionNumber(MINCLIVER_GLOBALCHAT);
 }

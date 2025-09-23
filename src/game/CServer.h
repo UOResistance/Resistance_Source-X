@@ -7,7 +7,6 @@
 #define _INC_CSERVER_H
 
 #include "../common/sqlite/SQLite.h"
-#include "../network/CSocket.h"
 #include "../common/CSFileObj.h"
 #include "../common/CTextConsole.h"
 #include "../common/CDataBase.h"
@@ -121,7 +120,8 @@ public:
 public:
 	void ListClients( CTextConsole * pClient ) const;
 	void SetResyncPause( bool fPause, CTextConsole * pSrc, bool bMessage = false );
-	bool CommandLine( int argc, tchar * argv[] );
+    bool CommandLinePreLoad( int argc, tchar * argv[] );
+    bool CommandLinePostLoad( int argc, tchar * argv[] );
 
 	virtual lpctstr GetName() const override {
 	    return CServerDef::GetName();

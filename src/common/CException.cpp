@@ -1,5 +1,5 @@
 
-#include "CException.h"
+//#include "CException.h" // included in the precompiled header
 
 #ifdef WINDOWS_SHOULD_EMIT_CRASH_DUMP
 #include "crashdump/crashdump.h"
@@ -25,6 +25,7 @@ int IsDebuggerPresent(void)
 		return 0;
 
 	ssize_t num_read = read(status_fd, buf, sizeof(buf)-1);
+    close(status_fd);
 
 	if (num_read > 0)
 	{
@@ -91,8 +92,15 @@ void RaiseRecoverableAbort()
 }
 
 [[noreturn]]
-void RaiseImmediateAbort()
+void RaiseImmediateAbort(int iErrCode)
 {
+    // Have iErrCode to help with the debugging process. Use a different number for each invocation,
+    UnreferencedParameter(iErrCode);
+
+#ifdef _DEBUG
+    STDERR_LOG("RaiseImmediateAbort with code %d.\n", iErrCode);
+#endif
+
     EXC_NOTIFY_DEBUGGER;
     SetAbortImmediate(true);
 
@@ -347,7 +355,7 @@ static void Signal_Terminate(int sig = 0) noexcept // If shutdown is initialized
     }
     catch (...)
     {
-        RaiseImmediateAbort();
+        RaiseImmediateAbort(1);
     }
 
     //exit(EXIT_FAILURE); // Having set the exit flag, all threads "should" terminate cleanly.

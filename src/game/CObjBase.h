@@ -48,7 +48,7 @@ private:
 protected:
 	CResourceRef m_BaseRef;     // Pointer to the resource that describes this type.
 
-    std::string _sRunningTrigger;   // Name of the running trigger (can be custom!) [use std::string instead of CSString because the former is allocated on-demand]
+    CSString _sRunningTrigger;   // Name of the running trigger (can be custom!)
     short _iRunningTriggerId;       // Current trigger being run on this object. Used to prevent the same trigger being called over and over.
     short _iCallingObjTriggerId;    // I am running a trigger called via TRIGGER (CallPersonalTrigger method). In which trigger (OF THIS SAME OBJECT) was this call executed?
 
@@ -56,12 +56,26 @@ public:
     static const char *m_sClassName;
     static dword sm_iCount;    // how many total objects in the world ?
 
-
     int _iCreatedResScriptIdx;	// index in g_Cfg.m_ResourceFiles of the script file where this obj was created
     int _iCreatedResScriptLine;	// line in the script file where this obj was created
 
+    bool _fIsInStatusUpdatesList;
+    bool _fIsInStatusUpdatesAddList;
+
+# define SU_UPDATE_HITS      0x01    // update hits to others
+# define SU_UPDATE_MODE      0x02    // update mode to all
+# define SU_UPDATE_TOOLTIP   0x04    // update tooltip to all
+    uchar m_fStatusUpdate;  // update flags for next tick
+
+# define SF_DELETING         0x01
+# define SF_TOPLEVEL         0x02
+    uchar _uiInternalStateFlags;
+
     CVarDefMap m_TagDefs;		// attach extra tags here.
     CVarDefMap m_BaseDefs;		// New Variable storage system
+    CResourceRefArray m_OEvents;
+    std::vector<std::unique_ptr<CClientTooltip>> m_TooltipData; // Storage for tooltip data while in trigger
+
     uint64	m_CanMask;			// Mask to be XORed to Can: enable or disable some Can Flags
 
     word	m_attackBase;       // dam for weapons
@@ -69,23 +83,12 @@ public:
 
     word	m_defenseBase;	    // Armor for IsArmor items
     word	m_defenseRange;     // variable range of defense.
+
     int 	m_ModMaxWeight;		// ModMaxWeight prop.
-    HUE_TYPE m_wHue;			// Hue or skin color. (CItems must be < 0x4ff or so)
     int m_ModAr;
-    CUID 	_uidSpawn;          // SpawnItem for this item
 
-    CResourceRefArray m_OEvents;
-
-    std::vector<std::unique_ptr<CClientTooltip>> m_TooltipData; // Storage for tooltip data while in trigger
-
-#   define SU_UPDATE_HITS      0x01    // update hits to others
-#   define SU_UPDATE_MODE      0x02    // update mode to all
-#   define SU_UPDATE_TOOLTIP   0x04    // update tooltip to all
-    uchar m_fStatusUpdate;  // update flags for next tick
-
-#   define SF_DELETING         0x01
-#   define SF_TOPLEVEL         0x02
-    uchar _uiInternalStateFlags;
+    CUID 	_uidSpawn;      // SpawnItem for this item
+    HUE_TYPE m_wHue;			// Hue or skin color. (CItems must be < 0x4ff or so)
 
 protected:
     PacketPropertyList* m_PropertyList;	// currently cached property list packet
@@ -106,7 +109,7 @@ protected:
      */
     virtual void DeletePrepare();
 
-    void DeleteCleanup(bool fForce);    // not virtual!
+    void DeleteCleanup(bool fForce) NONVIRTUAL;
 
 public:
     inline bool _IsBeingDeleted() const noexcept
@@ -122,7 +125,7 @@ public:     virtual bool  IsDeleted() const override;
 
     /**
      * @brief   Deletes this CObjBase from game (doesn't delete the raw class instance).
-     * @param   bForce  Force deletion.
+     * @param   fForce  Force deletion.
      * @return  Was deleted.
      */
     virtual bool Delete(bool fForce = false);
@@ -140,11 +143,13 @@ public:
 	*/
     CBaseBaseDef* Base_GetDef() const noexcept;
 
+    [[nodiscard]]
 	inline uint64 GetCanFlagsBase() const noexcept
 	{
 		return Base_GetDef()->m_Can;
 	}
 
+    [[nodiscard]]
     inline uint64 GetCanFlags() const noexcept
 	{
 		// m_CanMask is XORed to m_Can:
@@ -154,11 +159,13 @@ public:
 		return (GetCanFlagsBase() ^ m_CanMask);
 	}
 
+    [[nodiscard]]
 	bool Can(uint64 uiCan) const noexcept
 	{
         return (GetCanFlags() & uiCan);
 	}
 
+    [[nodiscard]]
     inline bool Can(uint64 uiCan, uint64 uiObjCanFlags) const noexcept
     {
         return (uiObjCanFlags & uiCan);
@@ -188,7 +195,7 @@ public:
 
     /**
     * @brief   sets the Spawn item.
-    * @param  The CCSpawn.
+    * @param spawn The CCSpawn.
     */
     void SetSpawn(CCSpawn *spawn);
 
@@ -577,8 +584,8 @@ public:
      * @param   wHue                The hue.
      * @param   fAvoidTrigger       true to avoid trigger.
      * @param [in,out]  pSrc        (Optional) If non-null, source for the.
-     * @param [in,out]  SourceObj   (Optional) If non-null, source object.
-     * @param   sound               The sound.
+     * @param [in,out]  pSourceObj   (Optional) If non-null, source object.
+     * @param   iSound               The sound.
      */
 	void SetHue( HUE_TYPE wHue, bool fAvoidTrigger = true, CTextConsole *pSrc = nullptr, CObjBase * pSourceObj = nullptr, llong iSound = 0 );
 
@@ -688,8 +695,8 @@ public:
 	* @brief   Adds an Effect to a map point.
 	* @param   motion          The motion.
 	* @param   id              The identifier.
-	* @param   pt			   The map point.
-	* @param   pSource         Source for the.
+	* @param   ptSrc			   The map point.
+	* @param   ptDest         Source for the.
 	* @param   bspeedseconds   The bspeedseconds.
 	* @param   bloop           The bloop.
 	* @param   fexplode        true to fexplode.
@@ -815,7 +822,7 @@ public:
 	void UpdateCanSee( PacketSend * pPacket, CClient * pClientExclude = nullptr ) const;
 
     /**
-     * @fn  void CObjBase::UpdateObjMessage( lpctstr pTextThem, lpctstr pTextYou, CClient * pClientExclude, HUE_TYPE wHue, TALKMODE_TYPE mode, FONT_TYPE font = FONT_NORMAL, bool bUnicode = false ) const;
+     * @fn  void CObjBase::UpdateObjMessage( lpctstr pTextThem, lpctstr pTextYou, CClient * pClientExclude, HUE_TYPE wHue, TALKMODE_TYPE iMode, FONT_TYPE iFont = FONT_NORMAL, bool fUnicode = false ) const;
      *
      * @brief   Updates the object message.
      *
@@ -823,26 +830,29 @@ public:
      * @param   pTextYou                The text you.
      * @param [in,out]  pClientExclude  If non-null, the client exclude.
      * @param   wHue                    The hue.
-     * @param   mode                    The mode.
-     * @param   font                    The font.
-     * @param   bUnicode                true to unicode.
+     * @param   iMode                    The iMode.
+     * @param   iFont                    The iFont.
+     * @param   fUnicode                true to unicode.
      */
-	void UpdateObjMessage( lpctstr pTextThem, lpctstr pTextYou, CClient * pClientExclude, HUE_TYPE wHue, TALKMODE_TYPE mode, FONT_TYPE font = FONT_NORMAL, bool bUnicode = false ) const;
+    void UpdateObjMessage(
+        lpctstr pTextThem, lpctstr pTextYou, CClient * pClientExclude,
+        HUE_TYPE wHue, TALKMODE_TYPE iMode,
+        FONT_TYPE iFont = FONT_NORMAL, bool fUnicode = false ) const;
 
     /**
-     * @fn  TRIGRET_TYPE CObjBase::OnHearTrigger(CResourceLock &s, lpctstr pCmd, CChar *pSrc, TALKMODE_TYPE &mode, HUE_TYPE wHue = HUE_DEFAULT);
+     * @fn  TRIGRET_TYPE CObjBase::OnHearTrigger(CResourceLock &s, lpctstr pCmd, CChar *pSrc, TALKMODE_TYPE &iModeRef, HUE_TYPE wHue = HUE_DEFAULT);
      *
      * @brief   Executes the hear trigger action.
      *
      * @param [in,out]  s       The CResourceLock to process.
      * @param   pCmd            The command.
      * @param [in,out]  pSrc    If non-null, source for the.
-     * @param [in,out]  mode    The mode.
+     * @param [in,out]  iModeRef    The iModeRef.
      * @param   wHue            The hue.
      *
      * @return  A TRIGRET_TYPE.
      */
-	TRIGRET_TYPE OnHearTrigger(CResourceLock &s, lpctstr pCmd, CChar *pSrc, TALKMODE_TYPE &mode, HUE_TYPE wHue = HUE_DEFAULT);
+    TRIGRET_TYPE OnHearTrigger(CResourceLock &s, lpctstr pCmd, CChar *pSrc, TALKMODE_TYPE &iModeRef, HUE_TYPE wHue = HUE_DEFAULT);
 
     /**
      * @fn  bool CObjBase::IsContainer() const;
@@ -878,11 +888,12 @@ public:
      * @param [in,out]  pCharSrc    If non-null, the character source.
      * @param   iSkillLevel         Zero-based index of the skill level.
      * @param [in,out]  pSourceItem If non-null, source item.
-     * @param   bReflecting         true to reflecting.
+     * @param   fReflecting         true to reflecting.
+     * @param iDuration Duration of the spell effect (default is instant).
      *
      * @return  true if it succeeds, false if it fails.
      */
-	virtual bool OnSpellEffect( SPELL_TYPE spell, CChar * pCharSrc, int iSkillLevel, CItem * pSourceItem, bool bReflecting = false, int64 iDuration = 0 )
+    virtual bool OnSpellEffect( SPELL_TYPE spell, CChar * pCharSrc, int iSkillLevel, CItem * pSourceItem, bool fReflecting = false, int64 iDuration = 0 )
 		= 0;
 
     /**
@@ -897,20 +908,26 @@ public:
      *
      * @return  A TRIGRET_TYPE.
      */
-	TRIGRET_TYPE Spell_OnTrigger( SPELL_TYPE spell, SPTRIG_TYPE stage, CChar * pSrc, CScriptTriggerArgs * pArgs );
+    TRIGRET_TYPE Spell_OnTrigger(SPELL_TYPE spell, SPTRIG_TYPE stage, CScriptTriggerArgsPtr pArgs, CChar * pSrc);
 
 protected:
     virtual void _GoAwake() override;
     virtual void _GoSleep() override;
 
 protected:
+    bool IsStatusUpdatePending() const;
+
     /**
      * @brief   Update Status window if any flag requires it on m_fStatusUpdate.
      */
     virtual void OnTickStatusUpdate();
 
-    virtual bool _CanTick(bool fParentGoingToSleep = false) const override;
-    //virtual bool  CanTick(bool fParentGoingToSleep = false) const override;   // Not needed: the right virtual is called by CTimedObj::_CanTick.
+    virtual bool _TickableState() const override;
+    //virtual bool  TickableState() const override;   // Not needed: the right virtual is called by CTimedObj::_CanTick.
+
+    std::optional<bool> _TickableStateOverride() const;
+
+    bool _CanTick(bool fParentGoingToSleep = false) const;
 
 public:
 

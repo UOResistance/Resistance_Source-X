@@ -1,5 +1,5 @@
 /**
-* @file ox_unix.h
+* @file os_unix.h
 * @brief Unix-specific declarations.
 */
 
@@ -39,13 +39,6 @@
 
 
 /*  cross-platform functions macros  */
-
-#define MAKEWORD(low,high)		((word)(((byte)(low))|(((word)((byte)(high)))<<8)))
-//#define MAKELONG(low,high)	((long)(((word)(low))|(((dword)((word)(high)))<<16)))
-#define LOWORD(l)		((word)((dword)(l) & 0xffff))
-#define HIWORD(l)		((word)((dword)(l) >> 16))
-#define LOBYTE(w)		((byte)((dword)(w) &  0xff))
-#define HIBYTE(w)		((byte)((dword)(w) >> 8))
 
 #ifdef _BSD
 	int getTimezone();

@@ -4,9 +4,8 @@
 #include "../game/CServer.h"
 #include "asyncdb.h"
 
-CDataBaseAsyncHelper g_asyncHdb;
 
-CDataBaseAsyncHelper::CDataBaseAsyncHelper(void) : AbstractSphereThread("AsyncDatabaseHelper", ThreadPriority::Low)
+CDataBaseAsyncHelper::CDataBaseAsyncHelper(void) : AbstractSphereThread("T_AsyncDBHelper", ThreadPriority::Low)
 {
 }
 

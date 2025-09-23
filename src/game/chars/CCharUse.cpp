@@ -1,6 +1,7 @@
 //  CChar is either an NPC or a Player.
 #include "../../common/sphere_library/CSRand.h"
-#include "../../common/CExpression.h"
+//#include "../../common/CExpression.h" // included in the precompiled header
+//#include "../../common/CScriptParserBufs.h" // included in the precompiled header via CExpression.h
 #include "../clients/CClient.h"
 #include "../items/CItem.h"
 #include "../items/CItemCorpse.h"
@@ -75,11 +76,11 @@ void CChar::Use_CarveCorpse( CItemCorpse * pCorpse, CItem * pItemCarving )
 	word iResourceQty = 0;
 	size_t iResourceTotalQty = pCorpseDef->m_BaseResources.size();
 
-	CScriptTriggerArgs Args(iResourceTotalQty,0,pItemCarving);
+    CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+    pScriptArgs->Init(iResourceTotalQty, 0, 0, pItemCarving);
 
 	for (size_t i = 0; i < iResourceTotalQty; ++i)
 	{
-
 		const CResourceID& rid = pCorpseDef->m_BaseResources[i].GetResourceID();
 		if (rid.GetResType() != RES_ITEMDEF)
 			continue;
@@ -90,15 +91,15 @@ void CChar::Use_CarveCorpse( CItemCorpse * pCorpse, CItem * pItemCarving )
 
 		tchar* pszTmp = Str_GetTemp();
 		snprintf(pszTmp, Str_TempLength(), "resource.%u.ID", (int)i);
-		Args.m_VarsLocal.SetNum(pszTmp, (int64)id);
+        pScriptArgs->m_VarsLocal.SetNum(pszTmp, (int64)id);
 
 		iResourceQty = (word)pCorpseDef->m_BaseResources[i].GetResQty();
 		snprintf(pszTmp, Str_TempLength(), "resource.%u.amount", (int)i);
-		Args.m_VarsLocal.SetNum(pszTmp, iResourceQty);
+        pScriptArgs->m_VarsLocal.SetNum(pszTmp, iResourceQty);
 	}
 	if (IsTrigUsed(TRIGGER_CARVECORPSE) || IsTrigUsed(TRIGGER_ITEMCARVECORPSE))
 	{
-		switch (static_cast<CItem*>(pCorpse)->OnTrigger(ITRIG_CarveCorpse, this, &Args))
+        switch (static_cast<CItem*>(pCorpse)->OnTrigger(ITRIG_CarveCorpse, pScriptArgs, this))
 		{
 		case TRIGRET_RET_TRUE:	return;
 		default:				break;
@@ -119,12 +120,12 @@ void CChar::Use_CarveCorpse( CItemCorpse * pCorpse, CItem * pItemCarving )
 
 		tchar* pszTmp = Str_GetTemp();
 		snprintf(pszTmp, Str_TempLength(), "resource.%u.ID", (int)i);
-        ITEMID_TYPE id = (ITEMID_TYPE)ResGetIndex((dword)Args.m_VarsLocal.GetKeyNum(pszTmp));
+        ITEMID_TYPE id = (ITEMID_TYPE)ResGetIndex((dword)pScriptArgs->m_VarsLocal.GetKeyNum(pszTmp));
 		if (id == ITEMID_NOTHING)
 			break;
 
 		snprintf(pszTmp, Str_TempLength(), "resource.%u.amount", (int)i);
-		iResourceQty =(word)Args.m_VarsLocal.GetKeyNum(pszTmp);
+        iResourceQty =(word)pScriptArgs->m_VarsLocal.GetKeyNum(pszTmp);
 
 		++ iItems;
 		CItem *pPart = CItem::CreateTemplate(id, nullptr, this);
@@ -462,7 +463,7 @@ bool CChar::Use_Train_ArcheryButte( CItem * pButte, bool fSetup )
 		CItem *pRemovedAmmo = CItem::CreateBase((ITEMID_TYPE)pButte->m_itArcheryButte.m_ridAmmoType.GetResIndex());
 		ASSERT(pRemovedAmmo);
 		pRemovedAmmo->SetAmount((word)pButte->m_itArcheryButte.m_iAmmoCount);
-		ItemBounce(pRemovedAmmo, false);
+		ItemBounce(pRemovedAmmo, g_Cfg.m_iBounceMessage);
 		SysMessageDefault(DEFMSG_ITEMUSE_ARCHBUTTE_GATHER);
 
 		pButte->m_itArcheryButte.m_ridAmmoType.Clear();
@@ -633,10 +634,10 @@ bool CChar::Use_Item_Web( CItem * pItemWeb )
 
 	// Try to break it.
 
-    if (pItemWeb->m_itWeb.m_dwHitsCur == 0)
-        pItemWeb->m_itWeb.m_dwHitsCur = 60 + g_Rand.GetVal(250);
-    else if (pItemWeb->m_itWeb.m_dwHitsCur > INT32_MAX)
-        pItemWeb->m_itWeb.m_dwHitsCur = INT32_MAX;
+    if (pItemWeb->m_itWeb.m_wHitsCur == 0)
+        pItemWeb->m_itWeb.m_wHitsCur = 60 + g_Rand.GetVal(250);
+    else if (pItemWeb->m_itWeb.m_wHitsCur > INT32_MAX)
+        pItemWeb->m_itWeb.m_wHitsCur = INT32_MAX;
 
 	// Since broken webs become spider silk, we should get out of here now if we aren't in a web.
 	CItem *pFlag = LayerFind(LAYER_FLAG_Stuck);
@@ -684,7 +685,7 @@ bool CChar::Use_Item_Web( CItem * pItemWeb )
 		pFlag->m_uidLink = pItemWeb->GetUID();
 
         int iStuckTimerSeconds = 2; // Mininum stuck timer value is 2 seconds.
-        iCharStr = ((100 - minimum(100, iCharStr)) * (int)pItemWeb->m_itWeb.m_dwHitsCur) / 10;
+        iCharStr = ((100 - minimum(100, iCharStr)) * (int)pItemWeb->m_itWeb.m_wHitsCur) / 10;
         iStuckTimerSeconds = minimum(10, iStuckTimerSeconds + iCharStr); //Maximum stuck timer value is 10 seconds
 
 		pFlag->SetTimeout(iStuckTimerSeconds * MSECS_PER_SEC);
@@ -771,7 +772,7 @@ bool CChar::Use_Repair( CItem * pItemArmor )
 		return false;
 	}
 
-	if ( pItemArmor->m_itArmor.m_dwHitsCur >= pItemArmor->m_itArmor.m_wHitsMax )
+	if ( pItemArmor->m_itArmor.m_wHitsCur >= pItemArmor->m_itArmor.m_wHitsMax )
 	{
 		SysMessageDefault(DEFMSG_REPAIR_FULL);
 		return false;
@@ -789,7 +790,7 @@ bool CChar::Use_Repair( CItem * pItemArmor )
 
 	// Use up some raw materials to repair.
 	int iTotalHits = pItemArmor->m_itArmor.m_wHitsMax;
-	int iDamageHits = pItemArmor->m_itArmor.m_wHitsMax - pItemArmor->m_itArmor.m_dwHitsCur;
+	int iDamageHits = pItemArmor->m_itArmor.m_wHitsMax - pItemArmor->m_itArmor.m_wHitsCur;
 	int iDamagePercent = IMulDiv(100, iDamageHits, iTotalHits);
 
 	size_t iMissing = ResourceConsumePart(&(pItemDef->m_BaseResources), 1, iDamagePercent / 2, true);
@@ -824,7 +825,7 @@ bool CChar::Use_Repair( CItem * pItemArmor )
 	bool fSuccess = Skill_UseQuick((SKILL_TYPE)(RetMainSkill.GetResIndex()), iDifficulty);
 	if ( fSuccess )
 	{
-		pItemArmor->m_itArmor.m_dwHitsCur = (word)(iTotalHits);
+		pItemArmor->m_itArmor.m_wHitsCur = (word)(iTotalHits);
 		pszText = g_Cfg.GetDefaultMsg(DEFMSG_REPAIR_1);
 	}
 	else
@@ -837,12 +838,12 @@ bool CChar::Use_Repair( CItem * pItemArmor )
 		{
 			pszText = g_Cfg.GetDefaultMsg(DEFMSG_REPAIR_2);
 			-- pItemArmor->m_itArmor.m_wHitsMax;
-			-- pItemArmor->m_itArmor.m_dwHitsCur;
+			-- pItemArmor->m_itArmor.m_wHitsCur;
 		}
 		else if ( !g_Rand.GetVal(3) )
 		{
 			pszText = g_Cfg.GetDefaultMsg(DEFMSG_REPAIR_3);
-			-- pItemArmor->m_itArmor.m_dwHitsCur;
+			-- pItemArmor->m_itArmor.m_wHitsCur;
 		}
 		else
 			pszText = g_Cfg.GetDefaultMsg( DEFMSG_REPAIR_4 );
@@ -851,14 +852,14 @@ bool CChar::Use_Repair( CItem * pItemArmor )
 	}
 
 	ResourceConsumePart(&(pItemDef->m_BaseResources), 1, iDamagePercent / 2, false);
-	if ( pItemArmor->m_itArmor.m_dwHitsCur <= 0 )
+	if ( pItemArmor->m_itArmor.m_wHitsCur <= 0 )
 		pszText = g_Cfg.GetDefaultMsg(DEFMSG_REPAIR_5);
 
 	tchar *pszMsg = Str_GetTemp();
 	snprintf(pszMsg, Str_TempLength(), g_Cfg.GetDefaultMsg(DEFMSG_REPAIR_MSG), pszText, pItemArmor->GetName());
 	Emote(pszMsg);
 
-	if ( pItemArmor->m_itArmor.m_dwHitsCur <= 0 )
+	if ( pItemArmor->m_itArmor.m_wHitsCur <= 0 )
 		pItemArmor->Delete();
 	else
 		pItemArmor->UpdatePropertyFlag();
@@ -1002,13 +1003,15 @@ void CChar::Use_Drink( CItem * pItem )
 
     if (IsTrigUsed(TRIGGER_DRINK))
     {
-        CScriptTriggerArgs args(dwDelay, wConsume);
-        args.m_pO1 = pItem;
-        args.m_VarsLocal.SetNumNew("BottleId", idbottle);
-        TRIGRET_TYPE iRet = OnTrigger(CTRIG_Drink, this, &args);
-        idbottle = (ITEMID_TYPE)args.m_VarsLocal.GetKeyNum("BottleId");
-        dwDelay = (dword)(args.m_iN1 > 0 ? args.m_iN1 : 1); //0 causes stays memory infinitely.
-        wConsume = (word)args.m_iN2;
+        CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+        pScriptArgs->Init(dwDelay, wConsume, 0, pItem);
+        pScriptArgs->m_VarsLocal.SetNumNew("BottleId", idbottle);
+
+        TRIGRET_TYPE iRet = OnTrigger(CTRIG_Drink, pScriptArgs, this);
+
+        idbottle = (ITEMID_TYPE)pScriptArgs->m_VarsLocal.GetKeyNum("BottleId");
+        dwDelay = (dword)(pScriptArgs->m_iN1 > 0 ? pScriptArgs->m_iN1 : 1); //0 causes stays memory infinitely.
+        wConsume = (word)pScriptArgs->m_iN2;
         wBottleAmount = wConsume;
 
         if (iRet == TRIGRET_RET_TRUE)
@@ -1104,7 +1107,7 @@ void CChar::Use_Drink( CItem * pItem )
         if (wBottleAmount > 0)
         {
             pBottle->SetAmount(wBottleAmount);
-            ItemBounce(pBottle, false);
+            ItemBounce(pBottle, g_Cfg.m_iBounceMessage);
         }
     }
 }
@@ -1239,14 +1242,14 @@ bool CChar::FollowersUpdate(CChar * pCharPet, short iPetFollowerSlots, bool fChe
         // Arguments should be read only. Otherwise we have to call this trigger also if fCheckOnly == true and
         //  everyone scripts have to be changed to recognize this scenario.
 
-        CScriptTriggerArgs Args;
-        Args.m_iN1 = (iPetFollowerSlots >= 0) ? 0 : 1;
-        Args.m_iN2 = abs(iPetFollowerSlots);
-        //Args.m_iN3 = fCheckOnly;
-        if (OnTrigger(CTRIG_FollowersUpdate, pCharPet, &Args) == TRIGRET_RET_TRUE)
+        CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+        pScriptArgs->m_iN1 = (iPetFollowerSlots >= 0) ? 0 : 1;
+        pScriptArgs->m_iN2 = abs(iPetFollowerSlots);
+        //pScriptArgs->m_iN3 = fCheckOnly;
+        if (OnTrigger(CTRIG_FollowersUpdate, pScriptArgs, pCharPet) == TRIGRET_RET_TRUE)
             return false;
 
-        //iPetFollowerSlots = n64_narrow_n16(Args.m_iN2) * ((Args.m_iN1 == 1) ? -1 : 1);
+        //iPetFollowerSlots = n64_narrow_n16(pScriptArgs->m_iN2) * ((pScriptArgs->m_iN1 == 1) ? -1 : 1);
 	}
 
     const short iMaxFollower = n64_narrow_n16(GetDefNum("MAXFOLLOWER", true));
@@ -1577,7 +1580,7 @@ int CChar::Do_Use_Item(CItem *pItem, bool fLink)
 	if (m_pNPC && (IsTrigUsed(TRIGGER_DCLICK) ||
 	               IsTrigUsed(TRIGGER_ITEMDCLICK)))        // for players, DClick was called before this function
 	{
-		if (pItem->OnTrigger(ITRIG_DCLICK, this) == TRIGRET_RET_TRUE)
+        if (pItem->OnTrigger(ITRIG_DCLICK, CScriptTriggerArgsPtr{}, this) == TRIGRET_RET_TRUE)
 			return false;
 	}
 
@@ -1893,7 +1896,7 @@ int CChar::Do_Use_Item(CItem *pItem, bool fLink)
         case IT_WEAPON_WHIP:
 		case IT_TALISMAN:
 		{
-			if (fLink)
+			if (IsSetOF(OF_NoDclickEquip) || fLink) // If no dclick equip is set, don't equip the item
 				return false;
 
 			return ItemEquip(pItem);
@@ -1981,8 +1984,12 @@ bool CChar::Use_Obj( CObjBase * pObj, bool fTestTouch, bool fScript  )
 		return false;
 	if ( IsClientActive() )
 		return GetClientActive()->Event_DoubleClick(pObj->GetUID(), false, fTestTouch, fScript);
-	else
-		return Use_Item(dynamic_cast<CItem*>(pObj), fTestTouch);
+
+    CItem *pItem = dynamic_cast<CItem*>(pObj);
+    if (!pItem)
+        return false;
+
+    return Use_Item(pItem, fTestTouch);
 }
 
 bool CChar::ItemEquipArmor( bool fForce )

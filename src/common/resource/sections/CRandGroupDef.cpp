@@ -3,8 +3,8 @@
 #include "../../../game/CServerConfig.h"
 #include "../../../game/triggers.h"
 #include "../../sphere_library/CSRand.h"
-#include "../../CException.h"
-#include "../../CExpression.h"
+//#include "../../CException.h" // included in the precompiled header
+//#include "../../CExpression.h" // included in the precompiled header
 #include "CRegionResourceDef.h"
 #include "CRandGroupDef.h"
 
@@ -246,7 +246,7 @@ size_t CRandGroupDef::GetRandMemberIndex( CChar * pCharSrc, bool fTrigger ) cons
     int iTotalWeight = 0;
     for ( i = 0; i < iCount; ++i )
     {
-        CRegionResourceDef * pOreDef = dynamic_cast <CRegionResourceDef *>( g_Cfg.ResourceGetDef( m_Members[i].GetResourceID() ) );
+        CRegionResourceDef * pOreDef = dynamic_cast <CRegionResourceDef *>( g_Cfg.RegisteredResourceGetDef( m_Members[i].GetResourceID() ) );
         // If no regionresource, return just some random entry!
         if (pOreDef != nullptr)
         {
@@ -258,7 +258,7 @@ size_t CRandGroupDef::GetRandMemberIndex( CChar * pCharSrc, bool fTrigger ) cons
 
                 if (IsTrigUsed(TRIGGER_RESOURCETEST))
                 {
-                    if (fTrigger && pOreDef->OnTrigger("@ResourceTest", pCharSrc, nullptr) == TRIGRET_RET_TRUE)
+                    if (fTrigger && pOreDef->OnTrigger("@ResourceTest", CScriptTriggerArgsPtr{}, pCharSrc) == TRIGRET_RET_TRUE)
                         continue;
                 }
             }

@@ -35,10 +35,10 @@ function(toolchain_exe_stuff)
     #-- Configure the Windows application type and add global linker flags.
 
     if(${WIN_SPAWN_CONSOLE})
-        add_link_options("LINKER:/ENTRY:WinMainCRTStartup") # Handled by is_win32_app_linker -> "LINKER:/SUBSYSTEM:CONSOLE"
+        target_link_options(spheresvr PRIVATE "/ENTRY:WinMainCRTStartup") # Handled by is_win32_app_linker -> "LINKER:/SUBSYSTEM:CONSOLE"
         set(PREPROCESSOR_DEFS_EXTRA _WINDOWS_CONSOLE)
-        #ELSE ()
-        #    add_link_options ("LINKER:/ENTRY:WinMainCRTStartup")     # Handled by is_win32_app_linker -> "LINKER: /SUBSYSTEM:WINDOWS"
+    #else()
+    #   target_link_options (spheresvr PRIVATE "/ENTRY:WinMainCRTStartup")     # Handled by is_win32_app_linker -> "LINKER: /SUBSYSTEM:WINDOWS"
     endif()
 
     #-- Validate sanitizers options and store them between the common compiler flags.
@@ -67,6 +67,7 @@ function(toolchain_exe_stuff)
         #SET (ENABLED_SANITIZER true)
     endif()
     if(${ENABLED_SANITIZER})
+        target_link_options(spheresvr PRIVATE "/DEBUG")
         set(PREPROCESSOR_DEFS_EXTRA ${PREPROCESSOR_DEFS_EXTRA} _SANITIZERS)
     endif()
 
@@ -118,14 +119,37 @@ function(toolchain_exe_stuff)
     else()
         set(local_msvc_exception_handler /EHsc)
     endif()
+
     # gersemi: off
     target_compile_options(spheresvr PRIVATE
         ${cxx_compiler_flags_common}
-        $<$<CONFIG:Release>: ${local_msvc_cmdline_runtime_lib_nondebug} ${local_msvc_exception_handler}  /Oy /GL /GA /Gw /Gy /GF $<IF:$<BOOL:${ENABLED_SANITIZER}>,/O1 /Zi,/O2>>
-        $<$<CONFIG:Nightly>: ${local_msvc_cmdline_runtime_lib_nondebug} ${local_msvc_exception_handler}  /Oy /GL /GA /Gw /Gy /GF $<IF:$<BOOL:${ENABLED_SANITIZER}>,/O1 /Zi,/O2>>
-        $<$<CONFIG:Debug>:   ${local_msvc_cmdline_runtime_lib_debug} /EHsc /Oy- /ob1 /Od /Gs $<IF:$<BOOL:${ENABLED_SANITIZER}>,/Zi,/ZI>>
+
+        $<$<CONFIG:Release>:
+            ${local_msvc_cmdline_runtime_lib_nondebug}
+            ${local_msvc_exception_handler}
+            /Oy /GL /GA /Gw /Gy /GF
+            $<IF:$<BOOL:${ENABLED_SANITIZER}>,/O1,/O2>
+            $<$<OR:$<BOOL:${ENABLED_SANITIZER}>,$<BOOL:${FORCE_DEBUG_INFO}>>:/Zi>
+        >
+
+        $<$<CONFIG:Nightly>:
+            ${local_msvc_cmdline_runtime_lib_nondebug}
+            ${local_msvc_exception_handler}
+            /Oy /GL /GA /Gw /Gy /GF
+            $<IF:$<BOOL:${ENABLED_SANITIZER}>,/O1,/O2>
+            $<$<OR:$<BOOL:${ENABLED_SANITIZER}>,$<BOOL:${FORCE_DEBUG_INFO}>>:/Zi>
+        >
+
+        $<$<CONFIG:Debug>:
+            ${local_msvc_cmdline_runtime_lib_debug}
+            /EHsc
+            /Oy- /ob1 /Od
+            /Gs
+            $<IF:$<BOOL:${ENABLED_SANITIZER}>,/Zi,/ZI>
+        >
         # ASan (and compilation for ARM arch) doesn't support edit and continue option (ZI)
     )
+
     # gersemi: on
 
     if("${ARCH}" STREQUAL "x86_64")
