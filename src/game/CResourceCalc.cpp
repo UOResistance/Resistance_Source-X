@@ -57,34 +57,27 @@ int CServerConfig::Calc_CombatAttackSpeed( const CChar * pChar, const CItem * pW
     
 	switch ( g_Cfg.m_iCombatSpeedEra )
 	{
-		case 0:
+		case 0: //REWORK complet du swing speed pour custom resistance
 		{
 			// pre-AOS formula (Sphere custom)		(default m_iSpeedScaleFactor = 15000, uses DEX instead STAM and calculate delay using weapon WEIGHT if weapon SPEED is not set)
-			if ( pWeapon && iBaseSpeed )
+			if ( pWeapon && pWeapon->GetSpeed())
 			{
-				iSwingSpeed = (pChar->Stat_GetAdjusted(STAT_DEX) + 100) * iBaseSpeed;
-				iSwingSpeed = maximum(1, iSwingSpeed);
-				iSwingSpeed = (iSpeedScaleFactor * 10) / iSwingSpeed;
+                iSwingSpeed = iSpeedScaleFactor - iBaseSpeed;
 				if ( iSwingSpeed < 5 )
 					iSwingSpeed = 5;
 				break;
 			}
 
-			iSwingSpeed = IMulDiv(100 - pChar->Stat_GetAdjusted(STAT_DEX), 40, 100);	// base speed is just the char DEX range (0 ~ 40)
+            iSwingSpeed = 20-(pChar->Skill_GetBase(SKILL_WRESTLING) / 100); //Wrestling
+            
 			if ( iSwingSpeed < 5 )
 				iSwingSpeed = 5;
-			else
-				iSwingSpeed += 5;
 
-			if ( pWeapon )
+			if ( pWeapon ) //il manque la vitesse sur le weapon
 			{
-				int iWeightMod = (pWeapon->GetWeight() * 10) / (4 * WEIGHT_UNITS);	// tenths of stone
-				if ( pWeapon->GetEquipLayer() == LAYER_HAND2 )	// 2-handed weapons are slower
-					iWeightMod += iSwingSpeed / 2;
-				iSwingSpeed += iWeightMod;
+                g_Log.EventWarn("Vitesse non configure sur l'arme: %s \n", (pWeapon->GetName()));
+                iSwingSpeed = 25;
 			}
-			else
-				iSwingSpeed += 2;
 			break;
 		}
 
@@ -134,6 +127,13 @@ int CServerConfig::Calc_CombatAttackSpeed( const CChar * pChar, const CItem * pW
 			break;
 		}
 	}
+    g_Log.Event(LOGL_EVENT | LOGM_NOCONTEXT, "SwingSpeed. %" PRIu32 " \n", iSwingSpeed);
+    if (iSwingSpeed > 120)
+    {
+        iSwingSpeed = 40;
+        g_Log.EventWarn("Delais de swing trop long. Dans le ini ajuster le SpeedScaleFactor a 70 \n");
+    }
+        
     return iSwingSpeed;
 }
 

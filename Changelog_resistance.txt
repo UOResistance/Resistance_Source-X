@@ -39,10 +39,10 @@ Here the custom change on Resistance FORK
 2025-01-14, Jhobean
 - Changed: Remove Training context menu on vendor (Use script instead)
 			Now vendor will understand and talk about skill by their NAME define on script instead of the Key name.
-			
+
 2025-01-18, Jhobean
 - Changed: Allow hiding if wear a light source on LAYER 9. Avoid HIDING_TOOLIT message
-- Changed: When an Item is invisible GM always see type spawn RED color. We added T_trap to this list too. 
+- Changed: When an Item is invisible GM always see type spawn RED color. We added T_trap to this list too.
 			All Trap invisible will be see red by GM or by player mentionned by the trap tag TAG.SeenBy_<UID>
 
 2025-08-20, Jhobean
@@ -50,3 +50,8 @@ Here the custom change on Resistance FORK
 
 2025-08-24, Jhobean
 - Changed: Change DEFMSG_MSG_YOUNOTICE_2 message to avoid reveal the name of the player.
+
+2025-09-25, Jhobean
+- Changed: CombatSpeedEra=0 is now only for resistance. Swing speed use only item speed in relation with SpeedScaleFactor.
+            SpeedScaleFactor shoult be set to 70 by default. Formula is: SwingSpeed(tenth of second) = SpeedScaleFactor - Weapon Speed
+            For wrestling 0% mean 2sec between hit and 1 sec at 100%
