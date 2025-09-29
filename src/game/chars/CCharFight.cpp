@@ -1667,8 +1667,8 @@ void CChar::Fight_SetDefaultSwingDelays()
     // With the old packet, the minimum anim delay is 1.0s, it doesn't matter if you send 0.
 
     int16 iAttackSpeed = int16(g_Cfg.Calc_CombatAttackSpeed(this, m_uidWeapon.ItemFind()));
-    if (iAttackSpeed < kiMinSwingAnimationDelay)
-        iAttackSpeed = kiMinSwingAnimationDelay;
+    //if (iAttackSpeed < kiMinSwingAnimationDelay)
+        //iAttackSpeed = kiMinSwingAnimationDelay;
     if (IsSetCombatFlags(COMBAT_ANIM_HIT_SMOOTH))
     {
         m_atFight.m_iRecoilDelay = 0;    // We don't have an actual recoil: the hit animation has the duration of the delay between hits, so the char is always doing a smooth, slow attack animation
