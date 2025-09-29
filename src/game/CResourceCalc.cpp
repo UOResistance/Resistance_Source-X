@@ -127,7 +127,7 @@ int CServerConfig::Calc_CombatAttackSpeed( const CChar * pChar, const CItem * pW
 			break;
 		}
 	}
-    g_Log.Event(LOGL_EVENT | LOGM_NOCONTEXT, "SwingSpeed. %" PRIu32 " \n", iSwingSpeed);
+    //g_Log.Event(LOGL_EVENT | LOGM_NOCONTEXT, "SwingSpeed. %" PRIu32 " \n", iSwingSpeed);
     if (iSwingSpeed > 120)
     {
         iSwingSpeed = 40;
