@@ -1,2 +1,8 @@
-#define __GITHASH__ "f24687c5330f8fbf7b7ae9f626447fc91e280d77"
-#define __GITREVISION__ 3473
+#ifndef _INC_GITREVISION_H
+#define _INC_GITREVISION_H
+
+#define __GITHASH__ "86d73d5833324146be2f845c680607b6860cf2a8"
+#define __GITREVISION__ 4133
+#define __GITBRANCH__ "DevResistance"
+
+#endif // _INC_GITREVISION_H

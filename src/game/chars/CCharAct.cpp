@@ -3617,7 +3617,7 @@ void CChar::SpeakUTF8Ex( const nachar * pszText, HUE_TYPE wHue, TALKMODE_TYPE mo
 }
 
 // Convert me into a figurine
-CItem * CChar::Make_Figurine( const CUID &uidOwner, ITEMID_TYPE id )
+CItem * CChar::Make_Figurine(const CUID uidOwner, ITEMID_TYPE id )
 {
 	ADDTOCALLSTACK("CChar::Make_Figurine");
 	if ( IsDisconnected() || m_pPlayer )
@@ -3633,10 +3633,14 @@ CItem * CChar::Make_Figurine( const CUID &uidOwner, ITEMID_TYPE id )
 
 	pItem->SetType(IT_FIGURINE);
 	pItem->SetName(GetName());
-	pItem->SetHue(GetHue());
+
+    // Shouldn't really be necessary, since we are keeping the char just disconnected, but again, historical reasons...
+    pItem->SetHue(GetHue());
+
 	pItem->m_itFigurine.m_ID = GetID();	// Base type of creature. (More1 of i_memory)
 	pItem->m_itFigurine.m_UID = GetUID();
 	pItem->m_uidLink = uidOwner;
+
     if (pDynamicVarFollowerSlots)
         pItem->m_TagDefs.SetNum("FOLLOWERSLOTS", pDynamicVarFollowerSlots->GetValNum(), false, false);
 
@@ -3644,10 +3648,14 @@ CItem * CChar::Make_Figurine( const CUID &uidOwner, ITEMID_TYPE id )
 		pItem->SetAttr(ATTR_INVIS);
 
 	SoundChar(CRESND_IDLE);			// Horse winny
+
+    // For some reason, shrunken npcs historically had been set as ridden npcs...
+    // It doesn't make much sense, but keep this for compatibility.
 	StatFlag_Set(STATF_RIDDEN);
 	Skill_Start(NPCACT_RIDDEN);
-	SetDisconnected();
-	m_atRidden.m_uidFigurine = pItem->GetUID();
+    m_atRidden.m_uidFigurine = pItem->GetUID();
+
+    SetDisconnected();
 
 	return pItem;
 }
@@ -3674,6 +3682,36 @@ CItem * CChar::NPC_Shrink()
 	return pItem;
 }
 
+CItem* CChar::Horse_ValidateMountItem(CItem *pMountItem) const
+{
+    ADDTOCALLSTACK("CChar::Horse_ValidateMountItem");
+    // RETURN nullptr if not a valid mount item.
+    // RETURN the CItem* itself if it's a valid mount item/figurine.
+
+    if (!pMountItem)
+        return nullptr;
+
+    if (pMountItem->IsType(IT_FIGURINE))	// It's a shrunken npc
+    {
+        if (pMountItem->m_itFigurine.m_UID == GetUID())
+            return pMountItem;
+    }
+
+    if (pMountItem->IsType(IT_EQ_HORSE))	// It's a mount item
+    {
+        const CChar* pRider = dynamic_cast<const CChar*>(pMountItem->GetTopLevelObj());
+        if (pRider)
+        {
+            ASSERT(pRider == pMountItem->m_uidLink.CharFind());
+            const CItem* pOwnerMountItem = pRider->LayerFind(LAYER_HORSE);
+            if (pOwnerMountItem && (pOwnerMountItem == pMountItem))
+                return pMountItem;
+        }
+    }
+
+    return nullptr;
+
+}
 
 // I am a horse.
 // Get my mount object. (attached to my rider)
@@ -3685,31 +3723,7 @@ CItem* CChar::Horse_GetMountItem() const
 	if (!IsDisconnected() || (Skill_GetActive() != NPCACT_RIDDEN))
 		return nullptr;
 
-    CItem* pMountItem = m_atRidden.m_uidFigurine.ItemFind();   // ACTARG1 = Mount item UID
-    if (pMountItem)
-    {
-		if (pMountItem->IsType(IT_FIGURINE))	// It's a shrinked npc
-		{
-			if (pMountItem->m_itFigurine.m_UID == GetUID())
-				return pMountItem;
-			return nullptr;
-		}
-
-		if (pMountItem->IsType(IT_EQ_HORSE))	// It's a mount item
-		{
-			const CChar* pRider = dynamic_cast<const CChar*>(pMountItem->GetTopLevelObj());
-			if (pRider)
-			{
-				if (!IsStatFlag(STATF_CONJURED) && !IsStatFlag(STATF_PET) && !pRider->IsPriv(PRIV_GM) && (pRider->GetPrivLevel() <= PLEVEL_Player))
-					return nullptr;
-
-				const CItem* pOwnerMountItem = pRider->LayerFind(LAYER_HORSE);
-				if (pOwnerMountItem && (pOwnerMountItem == pMountItem))
-					return pMountItem;
-			}
-		}
-    }
-    return nullptr;
+    return Horse_ValidateMountItem(m_atRidden.m_uidFigurine.ItemFind());   // ACTARG1 = Mount item UID
 }
 
 CItem* CChar::Horse_GetValidMountItem()
@@ -3996,11 +4010,14 @@ bool CChar::Horse_Mount(CChar *pHorse)
 		pHorse->NPC_PetSetOwner(this);
 
 	Horse_UnMount();					// unmount if already mounted
+
 	// Use the figurine as a mount item
 	pMountItem->SetType(IT_EQ_HORSE);
 	pMountItem->SetTimeout(1);			// the first time we give it immediately a tick, then give the horse a tick everyone once in a while.
-	LayerAdd(pMountItem, LAYER_HORSE);	// equip the horse item
-	pHorse->StatFlag_Set(STATF_RIDDEN);
+
+    LayerAdd(pMountItem, LAYER_HORSE);	// equip the horse item
+
+    pHorse->StatFlag_Set(STATF_RIDDEN);
 	pHorse->Skill_Start(NPCACT_RIDDEN);
 	return true;
 }
@@ -4418,6 +4435,12 @@ CChar::DeathRequestResult CChar::Death()
             OnTrigger(CTRIG_DeathCorpse, pScriptArgs, this);
 		}
 	}
+    /*
+    else
+    {
+        // TODO: add a error msg?
+    }
+    */
 	m_lastAttackers.clear();	// clear list of attackers
 
 	// Play death animation (fall on ground)
@@ -4617,6 +4640,7 @@ bool CChar::ShoveCharAtPosition(CPointMap const& ptDst, ushort *uiStaminaRequire
     // If i'm not pathfinding, ensure that i pass a valid uiStaminaRequirement, since i'll need it for the walk checks.
     ASSERT(fPathFinding || (nullptr != uiStaminaRequirement));
     ushort uiLocalStamReq = 0;
+    bool fRequireFullStamina = true;
 
     CItem *pPoly = LayerFind(LAYER_SPELL_Polymorph);
     auto AreaChars = CWorldSearchHolder::GetInstance(ptDst);
@@ -4638,6 +4662,8 @@ bool CChar::ShoveCharAtPosition(CPointMap const& ptDst, ushort *uiStaminaRequire
         else if ((pPoly && pPoly->m_itSpell.m_spell == SPELL_Wraith_Form) && (GetTopMap() == 0))		// chars under Wraith Form effect can always walk through chars in Felucca
             uiLocalStamReq = 0;
 
+        fRequireFullStamina = true;
+
         TRIGRET_TYPE iRet = TRIGRET_RET_DEFAULT;
         if (!fPathFinding)  //You want to avoid to trig the triggers if it's only a pathfinding evaluation
         {
@@ -4645,10 +4671,12 @@ bool CChar::ShoveCharAtPosition(CPointMap const& ptDst, ushort *uiStaminaRequire
             {
                 CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
                 pScriptArgs->m_iN1 = uiLocalStamReq;
+                pScriptArgs->m_iN3 = fRequireFullStamina;
                 iRet = pChar->OnTrigger(CTRIG_PersonalSpace, pScriptArgs, this);
                 if (iRet == TRIGRET_RET_TRUE)
                     goto set_and_return_false;
                 uiLocalStamReq = (ushort)(pScriptArgs->m_iN1);
+                fRequireFullStamina = static_cast<bool>(pScriptArgs->m_iN3);
             }
             if (IsTrigUsed(TRIGGER_CHARSHOVE))
             {
@@ -4661,7 +4689,7 @@ bool CChar::ShoveCharAtPosition(CPointMap const& ptDst, ushort *uiStaminaRequire
             }
         }
 
-        if ((uiLocalStamReq > 0) && (Stat_GetVal(STAT_DEX) < Stat_GetMaxAdjusted(STAT_DEX)))
+        if ((uiLocalStamReq > 0) && fRequireFullStamina && (Stat_GetVal(STAT_DEX) < Stat_GetMaxAdjusted(STAT_DEX)))
             goto set_and_return_false;
 
         if (Stat_GetVal(STAT_DEX) < uiLocalStamReq)		// check if we have enough stamina to push the char
@@ -4751,7 +4779,7 @@ CRegion * CChar::CanMoveWalkTo( CPointMap & ptDst, bool fCheckChars, bool fCheck
 	pArea = CheckValidMove(ptDst, &uiBlockFlags, DIR_TYPE(dir & ~DIR_MASK_RUNNING), &ClimbHeight, fPathFinding);
 	if ( !pArea )
 	{
-		if (g_Cfg.m_iDebugFlags & DEBUGF_WALK)
+		if (g_Cfg.m_iDebugFlags & DEBUGF_WALK && IsPlayer())
             g_Log.EventWarn("CheckValidMove failed\n");
 		return nullptr;
 	}
@@ -5820,21 +5848,86 @@ void CChar::OnTickSkill()
     EXC_CATCHSUB("Skill tick");
 }
 
-bool CChar::_TickableState() const
+
+bool CChar::IsTickableEvenIfDisconnected() const
 {
-    //ADDTOCALLSTACK_DEBUG("CChar::_TickableState");
+    // If the char goes offline, we don't want its items to tick anymore when the timer expires.
+    // Unless it's a summoned creature that we are riding: they could still get a tick,
+    //  even if their disconnected body is placed in a sector now sleeping.
+
+    const bool fSkillRidden = (Skill_GetActive() == NPCACT_RIDDEN);
+    const bool fStatfRidden = IsStatFlag(STATF_RIDDEN);
+    const bool fRidden = fSkillRidden || fStatfRidden;
+
+    // Validation step.
+
+    if (fSkillRidden)
+        ASSERT(fStatfRidden);
+    else if (fStatfRidden)
+        ASSERT(fSkillRidden);
+
+    // Skip the following checks at startup stage, because the mount item or rider might have not been created yet.
+    const bool fShouldCheck = !g_Serv.IsStartupLoadingScripts();
+
+    // For some reason, shrunken NPCs historically have been put in the "ridden" state.
+    if (fRidden && fShouldCheck)
+    {
+        const CItem *pLinkedItem = m_atRidden.m_uidFigurine.ItemFind(); // CUID::ItemFindFromUID(m_atRidden.m_uidFigurine.GetPrivateUID());
+        if (!pLinkedItem)
+        {
+            g_Log.EventError("Char name='%s' UID=0%" PRIx32 " is ridden but isn't linked to any mount item or figurine (ACTARG1=0%" PRIx32 ")\n",
+                             GetName(), GetUID().GetObjUID(), m_atRidden.m_uidFigurine.GetObjUID());
+            return false;
+        }
+
+        const CChar *pRider = !pLinkedItem ? nullptr : pLinkedItem->m_uidLink.CharFind();
+        if (pRider && pLinkedItem->IsType(IT_EQ_HORSE))
+        {
+            // The linked item is a mount item.
+            // I am actually riding this NPC/mount.  Its disconnected "body" should continue to tick.
+
+            if (!IsStatFlag(STATF_PET))
+            {
+                // GMs can ride untamed chars. They will be assigned the PET flag later on.
+                const bool fIsGm = pRider && pRider->IsPriv(PRIV_GM);
+                if (!fIsGm)
+                    g_Log.EventError("Char name='%s' UID=0%" PRIx32 " is ridden but isn't a pet?\n",
+                                     GetName(), GetUID().GetObjUID());
+            }
+        }
+        else if (pLinkedItem->IsType(IT_FIGURINE))
+        {
+            // The linked item is the figurine of this shrunken pet.
+            // Its disconnected "body" should continue to tick.
+
+            // If at this stage pRider is nullptr: just a figurine, inactive, not being interacted with.
+            // Otherwise, pRider is the char that is using right now and starting to mount the figurine.
+        }
+        else
+        {
+            g_Log.EventError("Char name='%s' UID=0%" PRIx32 " is ridden but linked to mount item with invalid type (UID=0%" PRIx32 ")?\n",
+                             GetName(), GetUID().GetObjUID(), pLinkedItem->GetUID().GetObjUID());
+            return false;
+        }
+    }
+
+    // End of validation.
+
+    return fRidden || IsStatFlag(STATF_CONJURED);
+}
+
+bool CChar::_CanTick(bool fParentGoingToSleep) const
+{
+    //ADDTOCALLSTACK_DEBUG("CChar::_CanTick");
     EXC_TRY("Able to tick?");
 
     if (IsDisconnected())
 	{
-        // mounted horses could still get a tick, even if their disconnected body is placed in a sector now sleeping.
-        if (Skill_GetActive() == NPCACT_RIDDEN)
-            return true;
-
-		return false;
+        if (!IsTickableEvenIfDisconnected())
+            return false;
 	}
 
-    return CObjBase::_TickableState();
+    return CObjBase::_CanTick(fParentGoingToSleep);
 
 	EXC_CATCH;
 
@@ -5845,11 +5938,14 @@ void CChar::_GoAwake()
 {
 	ADDTOCALLSTACK("CChar::_GoAwake");
 
-	CObjBase::_GoAwake();
-	CContainer::_GoAwake();
-
     if (!IsPeriodicTickPending())
         CWorldTickingList::AddCharPeriodic(this, false);
+
+    if (IsDisconnected())
+        return;
+
+    CObjBase::_GoAwake();
+	CContainer::_GoAwake();
 
     if (!_IsTimerSet())
         _SetTimeout(g_Rand.GetValFast(1 * MSECS_PER_SEC));  // make it tick randomly in the next sector, so all awaken NPCs get a different tick time.
@@ -5884,21 +5980,13 @@ bool CChar::_OnTick()
 
 	EXC_SET_BLOCK("Can Tick?");
 
-    // This check shouldn't be needed, since it's already done in _CanTick, but we'll leave it here for now until further tests.
-    if (_IsSleeping() || IsDisconnected())
-	{
-        // In this cases, only mounted horses can still get a tick.
-        if (Skill_GetActive() != NPCACT_RIDDEN)
-            return true;
-	}
-
-    const bool fTickableState  = _TickableState();
+    const bool fTickableState  = _CanTick(false);
     const bool fSleeping       = _IsSleeping();
 
 //#ifdef _DEBUG
     if (!fTickableState || fSleeping)
     {
-        g_Log.EventDebug("[Temporary msg] Char '%s' (UID=0x%" PRIx32 ") at P=%s is in the ticking list with unusual TickableState=%d, SleepingState=%d.\n",
+        g_Log.EventDebug("[Temporary msg] Char '%s' (UID=0x%" PRIx32 ") at P=%s is in the ticking list with unusual CanTick=%d, SleepingState=%d.\n",
                          GetName(), GetUID().GetObjUID(),
                          GetTopPoint().WriteUsed(),
                          (int)fTickableState, (int)fSleeping
@@ -5911,7 +5999,11 @@ bool CChar::_OnTick()
         // It can happen that i'm in the ticking list, but for various reasons right now i'm in a non-tickable state.
         // Among the reasons why i can't tick, though, there cannot be being in a sleeping state: when a char goes into sleeping state
         //  it should also be removed from the list (it happens in _GoSleep()).
-        ASSERT(!fSleeping);
+        if (!fSleeping) {
+            g_Log.EventDebug("[Temporary msg] CChar sleeping and not in tickable state but in the ticking list? Sector sleep status=%d.\n",
+                             (int)GetTopSector()->IsSleeping());
+        }
+        //ASSERT(!fSleeping);
 
 		if (GetTopSector()->IsSleeping() && !g_Rand.Get16ValFast(15))
 		{
@@ -5919,7 +6011,7 @@ bool CChar::_OnTick()
             //  will lead to an accumulation of npcs at the edge of the new sector.
 
 //#ifdef _DEBUG
-            g_Log.EventDebug("Sent to sleep (random), to be awaken alongside its sector.\n");
+            g_Log.EventDebug("[Temporary msg] Sent CChar to sleep (random), to be awaken alongside its sector.\n");
 //#endif
 
 			_SetTimeout(1);      //Make it tick after sector's awakening.
