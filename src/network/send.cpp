@@ -155,19 +155,20 @@ PacketObjectStatus::PacketObjectStatus(CClient* target, CObjBase* object) : Pack
 
     bool bCustomName=0;
     CSString sShowName;
-    if (objectChar != nullptr &&
-        objectChar->IsClientType() &&
-        IsTrigUsed(TRIGGER_DISPLAYNAME) &&
+    if (objectChar != nullptr && objectChar->IsClientType() && IsTrigUsed(TRIGGER_DISPLAYNAME) &&
         (objectChar != character)) //Avoid launch trigger if the target is the same character
     {
-        CScriptTriggerArgs args;
-        args.m_s1 = object->GetName();
-        args.m_iN1 =2;//Trigger use on status
-        
-        if (objectChar->OnTrigger(CTRIG_DisplayName, character, &args) == TRIGRET_RET_TRUE)
+        // Nouvelle API : on crée directement le smart pointer
+        CScriptTriggerArgsPtr pScriptArgs = std::make_shared<CScriptTriggerArgs>();
+
+        // On remplit les champs directement sur l'objet pointé
+        pScriptArgs->m_s1  = object->GetName();
+        pScriptArgs->m_iN1 = 2; // Trigger use on status
+
+        if (objectChar->OnTrigger(CTRIG_DisplayName, pScriptArgs, character) == TRIGRET_RET_TRUE)
         {
             bCustomName = 1;
-            sShowName = args.m_s1;
+            sShowName   = pScriptArgs->m_s1; // lire directement depuis le smart pointer
         }
     }
     if (bCustomName)
@@ -2691,16 +2692,19 @@ PacketPaperdoll::PacketPaperdoll(const CClient* target, CChar* character) : Pack
     CSString sShowName;
 
 
-    if (IsTrigUsed(TRIGGER_DISPLAYNAME) && (target->GetChar() != character)) //Avoid launch trigger if the target is the same character
+if (IsTrigUsed(TRIGGER_DISPLAYNAME) && (target->GetChar() != character)) //Avoid launch trigger if the target is the same character
     {
-        CChar* CharacterCast = const_cast<CChar*>(target->GetChar()); //CONST_CAST très dangereux!  Work around cheap
-        CScriptTriggerArgs args;
-        args.m_s1 = character->GetName();
-        args.m_iN1 = 1;//Trigger use on paperdoll
-        if (character->OnTrigger(CTRIG_DisplayName, CharacterCast, &args) == TRIGRET_RET_TRUE)
+        CChar *CharacterCast = const_cast<CChar *>(target->GetChar());       //CONST_CAST très dangereux! Work around cheap
+        CScriptTriggerArgsPtr pScriptArgs = std::make_shared<CScriptTriggerArgs>();
+
+        // On remplit directement les champs
+        pScriptArgs->m_s1  = character->GetName();
+        pScriptArgs->m_iN1 = 1; // Trigger use on paperdoll
+
+        if (character->OnTrigger(CTRIG_DisplayName, pScriptArgs, CharacterCast) == TRIGRET_RET_TRUE)
         {
             bCustomName = 1;
-            sShowName = args.m_s1;
+            sShowName   = pScriptArgs->m_s1; // lire directement depuis le smart pointer
         }
     }
 

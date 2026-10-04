@@ -255,15 +255,16 @@ void CClient::AOSTooltip_addName(CObjBase* pObj)
         CChar* pClient = static_cast<CChar*>(GetChar());
         if (IsTrigUsed(TRIGGER_DISPLAYNAME) && pChar->IsClientType() && (pChar != pClient)) //Avoid launch trigger if the target is the same character
         {
-            CScriptTriggerArgs args;
-            args.m_s1 = pChar->GetName();
-            args.m_iN1 = 3;//Trigger use on tooltip
-            
-            if (pChar->OnTrigger(CTRIG_DisplayName, pClient, &args) == TRIGRET_RET_TRUE)
+            CScriptTriggerArgsPtr pScriptArgs = std::make_shared<CScriptTriggerArgs>();
+            pScriptArgs->m_s1                 = pChar->GetName();
+            pScriptArgs->m_iN1                = 3; // Trigger use on tooltip
+
+            if (pChar->OnTrigger(CTRIG_DisplayName, pScriptArgs, pClient) == TRIGRET_RET_TRUE)
+            //if (pChar->OnTrigger(CTRIG_DisplayName, pClient, &args) == TRIGRET_RET_TRUE)
             {
                 /*To make it work correctly TooltipCache must be set to 0 on ini or other player will use wrong tooltip*/
                 /*Maybe a beter way can be done*/
-                PUSH_FRONT_TOOLTIP(pChar, new CClientTooltip(1070722, args.m_s1)); // ~1_NOTHING~
+                PUSH_FRONT_TOOLTIP(pChar, new CClientTooltip(1070722, pScriptArgs->m_s1)); // ~1_NOTHING~
                 return; //Avoid to show the prefix and suffix. Show only the name you want
             }
         }
