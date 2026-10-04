@@ -1,4 +1,4 @@
-#include "../common/CException.h"
+//#include "../common/CException.h" // included in the precompiled header
 #include "../sphere/ProfileTask.h"
 #include "../sphere/threads.h"
 #include "CWorldGameTime.h"
@@ -7,19 +7,20 @@
 
 
 CTimedObject::CTimedObject(PROFILE_TYPE profile) noexcept :
-    _iTimeout(0), _profileType(profile), _fIsSleeping(true)
+    _iTimeout(0), _profileType(profile), _fIsSleeping(true),
+    _fIsInWorldTickList(false), _fIsInWorldTickAddList(false)
 {
 }
 
 CTimedObject::~CTimedObject()
 {
+    ADDTOCALLSTACK("CTimedObject::~CTimedObject");
     EXC_TRY("Cleanup in destructor");
 
-    ADDTOCALLSTACK("CTimedObject::~CTimedObject");
-    //if (_iTimeout > 0)
-    //{
+    if (_IsTimeoutTickingActive())
+    {
         CWorldTickingList::DelObjSingle(this);
-    //}
+    }
 
     EXC_CATCH;
 }
@@ -34,19 +35,6 @@ void CTimedObject::_GoAwake()
         CWorldTickingList::AddObjSingle(_GetTimeoutRaw(), this, true);
     }
     _fIsSleeping = false;
-}
-
-bool CTimedObject::_CanTick(bool fParentGoingToSleep) const
-{
-    //ADDTOCALLSTACK_DEBUG("CTimedObject::_CanTick");
-    UnreferencedParameter(fParentGoingToSleep);
-    return !_IsSleeping();
-}
-
-bool CTimedObject::CanTick(bool fParentGoingToSleep) const
-{
-    //ADDTOCALLSTACK_DEBUG("CTimedObject::CanTick");
-    MT_ENGINE_SHARED_LOCK_RETURN(_CanTick(fParentGoingToSleep));
 }
 
 bool CTimedObject::OnTick()
@@ -76,8 +64,9 @@ void CTimedObject::_SetTimeout(int64 iDelayInMsecs)
     */
     if (iDelayInMsecs < 0)
     {
-        CWorldTickingList::DelObjSingle(this);
-        _SetTimeoutRaw(0);
+        if (_IsTimeoutTickingActive())
+            CWorldTickingList::DelObjSingle(this);
+        _ClearTimeoutRaw();
     }
     else
     {
@@ -91,7 +80,7 @@ void CTimedObject::_SetTimeout(int64 iDelayInMsecs)
 void CTimedObject::SetTimeout(int64 iDelayInMsecs)
 {
     ADDTOCALLSTACK_DEBUG("CTimedObject::SetTimeout");
-    MT_ENGINE_UNIQUE_LOCK_SET;
+    MT_ENGINE_UNIQUE_LOCK_SET(this);
     _SetTimeout(iDelayInMsecs);
 }
 
@@ -174,13 +163,13 @@ int64 CTimedObject::GetTimerSAdjusted() const noexcept
 
 void CTimedObject::GoSleep()
 {
-    MT_ENGINE_UNIQUE_LOCK_SET;
+    MT_ENGINE_UNIQUE_LOCK_SET(this);
     _GoSleep();
 }
 
 void CTimedObject::GoAwake()
 {
-    MT_ENGINE_UNIQUE_LOCK_SET;
+    MT_ENGINE_UNIQUE_LOCK_SET(this);
     _GoAwake(); // Call virtuals!
 }
 
@@ -189,10 +178,10 @@ PROFILE_TYPE CTimedObject::GetProfileType() const noexcept
     MT_ENGINE_SHARED_LOCK_RETURN(CTimedObject::_GetProfileType());
 }
 
-void CTimedObject::ClearTimeout() noexcept
+void CTimedObject::ClearTimeoutRaw() noexcept
 {
-    MT_ENGINE_UNIQUE_LOCK_SET;
-    CTimedObject::_ClearTimeout();
+    MT_ENGINE_UNIQUE_LOCK_SET(this);
+    CTimedObject::_ClearTimeoutRaw();
 }
 
 bool CTimedObject::IsSleeping() const noexcept

@@ -7,6 +7,7 @@ endfunction()
 function(toolchain_exe_stuff_common)
     #-- Find libraries to be linked to.
 
+    message(STATUS)
     message(STATUS "Locating libraries to be linked to...")
 
     set(libs_link_list mariadb dl)
@@ -22,26 +23,25 @@ function(toolchain_exe_stuff_common)
 
     #string(REPLACE ";" " " CXX_FLAGS_EXTRA "${CXX_FLAGS_EXTRA}")
 
-    set(cxx_compiler_options_common ${list_explicit_compiler_options_all} ${CXX_FLAGS_EXTRA})
+    set(cxx_compiler_options_common ${list_explicit_compiler_options_all})
     #separate_arguments(cxx_compiler_options_common)
 
     #-- Apply compiler flags, only the ones specific per build type.
 
     if(TARGET spheresvr_release)
-        target_compile_options(spheresvr_release PUBLIC ${custom_compile_options_release})
+        target_compile_options(spheresvr_release PRIVATE ${custom_compile_options_release})
     endif()
     if(TARGET spheresvr_nightly)
-        target_compile_options(spheresvr_nightly PUBLIC ${custom_compile_options_nightly})
+        target_compile_options(spheresvr_nightly PRIVATE ${custom_compile_options_nightly})
     endif()
     if(TARGET spheresvr_debug)
-        target_compile_options(spheresvr_debug PUBLIC ${custom_compile_options_debug})
+        target_compile_options(spheresvr_debug PRIVATE ${custom_compile_options_debug})
     endif()
 
     #-- Store common linker flags.
 
     set(cxx_linker_options_common
         ${list_explicit_linker_options_all}
-        ${CMAKE_EXE_LINKER_FLAGS_EXTRA}
         $<$<BOOL:${RUNTIME_STATIC_LINK}>:
         -static-libstdc++
         -static-libgcc> # no way to safely statically link against libc
@@ -50,13 +50,13 @@ function(toolchain_exe_stuff_common)
     #-- Apply linker flags, only the ones specific per build type.
 
     if(TARGET spheresvr_release)
-        target_link_options(spheresvr_release PUBLIC ${custom_link_options_release})
+        target_link_options(spheresvr_release PRIVATE ${custom_link_options_release})
     endif()
     if(TARGET spheresvr_nightly)
-        target_link_options(spheresvr_nightly PUBLIC ${custom_link_options_nightly})
+        target_link_options(spheresvr_nightly PRIVATE ${custom_link_options_nightly})
     endif()
     if(TARGET spheresvr_debug)
-        target_link_options(spheresvr_debug PUBLIC ${custom_link_options_debug})
+        target_link_options(spheresvr_debug PRIVATE ${custom_link_options_debug})
     endif()
 
 
@@ -73,13 +73,13 @@ function(toolchain_exe_stuff_common)
     #-- Apply define macros, only the ones specific per build type.
 
     if(TARGET spheresvr_release)
-        target_compile_definitions(spheresvr_release PUBLIC NDEBUG)
+        target_compile_definitions(spheresvr_release PRIVATE NDEBUG)
     endif(TARGET spheresvr_release)
     if(TARGET spheresvr_nightly)
-        target_compile_definitions(spheresvr_nightly PUBLIC NDEBUG THREAD_TRACK_CALLSTACK _NIGHTLYBUILD)
+        target_compile_definitions(spheresvr_nightly PRIVATE NDEBUG THREAD_TRACK_CALLSTACK _NIGHTLYBUILD)
     endif(TARGET spheresvr_nightly)
     if(TARGET spheresvr_debug)
-        target_compile_definitions(spheresvr_debug PUBLIC _DEBUG THREAD_TRACK_CALLSTACK _PACKETDUMP)
+        target_compile_definitions(spheresvr_debug PRIVATE _DEBUG THREAD_TRACK_CALLSTACK _PACKETDUMP)
     endif(TARGET spheresvr_debug)
 
     #-- Now add back the common compiler options, preprocessor macros, linker targets and options.

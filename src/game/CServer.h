@@ -7,7 +7,6 @@
 #define _INC_CSERVER_H
 
 #include "../common/sqlite/SQLite.h"
-#include "../network/CSocket.h"
 #include "../common/CSFileObj.h"
 #include "../common/CTextConsole.h"
 #include "../common/CDataBase.h"
@@ -19,18 +18,19 @@
 
 class CItemShip;
 
-enum SERVMODE_TYPE
+enum class ServMode
 {
-	SERVMODE_RestockAll,		// Major event, potentially slow.
-	SERVMODE_GarbageCollection,	// Executing the garbage collection, potentially demanding.
-	SERVMODE_Saving,			// Forced save freezes the system.
-	SERVMODE_Run,				// Game is up and running.
-	SERVMODE_ResyncPause,		// Server paused during resync.
+    RestockAll,             // Major event, potentially slow.
+    GarbageCollection,      // Executing the garbage collection, potentially demanding.
+    Saving,                 // Forced save freezes the system.
+    Run,                    // Game is up and running.
+    ResyncPause,            // Server paused during resync.
 
-    SERVMODE_PreLoadingINI,     // Initial (first) parsing of the sphere.ini
-	SERVMODE_Loading,			// Initial load.
-	SERVMODE_ResyncLoad,		// Loading after resync.
-	SERVMODE_Exiting			// Closing down.
+    StartupPreLoadingIni,   // Initial (first) parsing of the sphere.ini
+    StartupLoadingScripts,  // Initial load.
+    StartupLoadingSaves,
+    ResyncLoad,             // Loading after resync.
+    Exiting                 // Closing down.
 };
 
 
@@ -40,9 +40,9 @@ extern class CServer : public CServerDef, public CTextConsole
 
 public:
     static const char* m_sClassName;
-    std::atomic<SERVMODE_TYPE> m_iModeCode;	// Just some error code to return to system.
+    std::atomic<ServMode> m_iModeCode;      // Query the server state.
     std::atomic_int m_iExitFlag;			// identifies who caused the exit. <0 = error
-    bool m_fResyncPause;		            // Server is temporarily halted so files can be updated.
+    bool m_fResyncPause;		            // Server is temporarily halted so files can be updated. TODO: don't we already have m_iModeCode and ServMode::ResyncPause?
     CTextConsole* m_fResyncRequested;		// A resync pause has been requested by this source.
 
 #ifdef _WIN32
@@ -79,17 +79,19 @@ public:
 	CServer& operator=(const CServer& other) = delete;
 
 public:
-    inline SERVMODE_TYPE GetServerMode() const noexcept {
-        return m_iModeCode.load(std::memory_order_acquire);
-    }
+    void SetServerMode( ServMode mode );
+    ServMode GetServerMode() const noexcept;
+    bool IsStartupLoadingScripts() const noexcept;
+    //bool IsStartupLoadingSaves() const noexcept;
+    bool IsLoadingGeneric() const noexcept;
+    bool IsResyncing() const noexcept;
+    bool IsDestroyingWorld() const noexcept;
 
-	void SetServerMode( SERVMODE_TYPE mode );
     bool IsValidBusy() const;
+
     int GetExitFlag() const noexcept;
     void SetExitFlag(int iFlag) noexcept;
-    bool IsLoading() const noexcept;
-    bool IsResyncing() const noexcept;
-	void Shutdown( int64 iMinutes );
+    void Shutdown( int64 iMinutes );
 	void SetSignals( bool fMsg = true );
     bool SetProcessPriority(int iPriorityLevel);
 
@@ -121,7 +123,8 @@ public:
 public:
 	void ListClients( CTextConsole * pClient ) const;
 	void SetResyncPause( bool fPause, CTextConsole * pSrc, bool bMessage = false );
-	bool CommandLine( int argc, tchar * argv[] );
+    bool CommandLinePreLoad( int argc, tchar * argv[] );
+    bool CommandLinePostLoad( int argc, tchar * argv[] );
 
 	virtual lpctstr GetName() const override {
 	    return CServerDef::GetName();

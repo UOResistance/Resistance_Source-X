@@ -9,7 +9,7 @@
 #include "../../common/crypto/CCrypto.h"
 #include "../../common/CScriptTriggerArgs.h"
 #include "../../common/CTextConsole.h"
-#include "../../network/send.h"
+#include "../../network/CNetState.h"
 #include "../CSectorEnviron.h"
 #include "../game_enums.h"
 #include "CAccount.h"
@@ -17,12 +17,17 @@
 #include "CGlobalChatChanMember.h"
 #include "CGMPage.h"
 
+class Packet;
+class PacketCloseUIWindow;
+enum PacketCloseUIWindowType : uint;
+class PacketDisplayPopup;
 
 class CItemBase;
 class CItemContainer;
 class CItemMap;
 class CItemMultiCustom;
 class CSObjCont;
+
 struct VendorItem;
 enum CREID_TYPE : uint32;
 enum ITEMID_TYPE : uint32;
@@ -44,6 +49,8 @@ enum CC_TYPE
 };
 
 
+// TODO: just split CDialogResponseArgs into two objects (CScriptTriggerArgs and a struct for other data?)
+//  Or just make CScriptTriggerArgs a member of CDialogResponseArgs... Favor composition over inheritance!
 class CDialogResponseArgs : public CScriptTriggerArgs
 {
 	// The scriptable return from a gump dialog.
@@ -55,7 +62,8 @@ public:
 		const word m_ID;
 		CSString const m_sText;
 
-		TResponseString( word id, lpctstr pszText ) : m_ID( id ), m_sText( pszText )
+        TResponseString( word id, lpctstr pszText )
+            : m_ID( id ), m_sText( pszText )
 		{
 		}
         TResponseString(const TResponseString& copy) = delete;
@@ -352,7 +360,7 @@ public:
 	bool Event_ExceededNetworkQuota(uchar uiType, int64 iBytes, int64 iQuota);
 
 	TRIGRET_TYPE Menu_OnSelect( const CResourceID& rid, int iSelect, CObjBase * pObj );
-	TRIGRET_TYPE Dialog_OnButton( const CResourceID& rid, dword dwButtonID, CObjBase * pObj, CDialogResponseArgs * pArgs );
+    TRIGRET_TYPE Dialog_OnButton(const CResourceID& rid, dword dwButtonID, CObjBase * pObj, std::shared_ptr<CDialogResponseArgs> pScriptArgs );
 
 	bool Login_Relay( uint iServer ); // Relay player to a certain IP
 	byte Login_ServerList( const char * pszAccount, const char * pszPassword ); // Initial login (Login on "loginserver", new format)
@@ -436,7 +444,7 @@ public:
 	void addTime( bool fCurrent = false ) const;
 	void addObjectRemoveCantSee( const CUID& uid, lpctstr pszName = nullptr ) const;
 	void closeContainer( const CObjBase * pObj ) const;
-	void closeUIWindow( const CObjBase* pObj, PacketCloseUIWindow::UIWindow windowType ) const;
+    void closeUIWindow( const CObjBase* pObj, PacketCloseUIWindowType windowType ) const;
 	void addObjectRemove( const CUID& uid ) const;
 	void addObjectRemove( const CObjBase * pObj ) const;
 	void addRemoveAll( bool fItems, bool fChars );
@@ -446,7 +454,7 @@ public:
 	void addItem_InContainer( const CItem * pItem );
 	void addItem( CItem * pItem );
 
-	void addBuff( const BUFF_ICONS IconId, const dword ClilocOne, const dword ClilocTwo, const word durationSeconds = 0, lpctstr* pArgs = nullptr, uint uiArgCount = 0) const;
+    void addBuff(const BUFF_ICONS IconId, const dword ClilocOne, const dword ClilocTwo, const word durationSeconds = 0, lpctstr* pptcArgs = nullptr, uint uiArgCount = 0) const;
 	void removeBuff(const BUFF_ICONS IconId) const;
 	void resendBuffs() const;
 
@@ -826,6 +834,16 @@ public:
 		return ( (m_iConnectType == CONNECT_CRYPT) || (m_iConnectType == CONNECT_LOGIN) || (m_iConnectType == CONNECT_GAME) );
 	}
 
+    /**
+     * Checks, whether packet is pregame (connection or login part) or game (game, telnet, http, axis...).
+     *
+     * @return True if packet type is before login.
+     */
+    bool IsPreGameTypePacket() const noexcept
+	{
+	    return m_iConnectType == CONNECT_UNK || m_iConnectType == CONNECT_CRYPT || m_iConnectType == CONNECT_LOGIN;
+	}
+
 	CONNECT_TYPE GetConnectType() const noexcept
 	{
 		return m_iConnectType;
@@ -861,7 +879,7 @@ public:
 	CItemMultiCustom * m_pHouseDesign; // The building this client is designing
 
 public:
-	lpctstr GetDefStr( lpctstr ptcKey, bool fZero = false ) const
+    lpctstr GetDefStr( lpctstr ptcKey, bool fZero = false ) const
 	{
 		return m_BaseDefs.GetKeyStr( ptcKey, fZero );
 	}
@@ -871,14 +889,14 @@ public:
 		return m_BaseDefs.GetKeyNum( ptcKey );
 	}
 
-	void SetDefNum(lpctstr ptcKey, int64 iVal, bool fZero = true)
+    void SetDefNum(lpctstr ptcKey, int64 iVal, bool fZero = true, bool fWarnOverwrite = false)
 	{
-		m_BaseDefs.SetNum(ptcKey, iVal, fZero);
+        m_BaseDefs.SetNum(ptcKey, iVal, fZero, fWarnOverwrite);
 	}
 
-	void SetDefStr(lpctstr ptcKey, lpctstr pszVal, bool fQuoted = false, bool fZero = true)
+    void SetDefStr(lpctstr ptcKey, lpctstr pszVal, bool fQuoted = false, bool fZero = true, bool fWarnOverwrite = false)
 	{
-		m_BaseDefs.SetStr(ptcKey, fQuoted, pszVal, fZero);
+        m_BaseDefs.SetStr(ptcKey, fQuoted, pszVal, fZero, fWarnOverwrite);
 	}
 
 	void DeleteDef(lpctstr ptcKey)

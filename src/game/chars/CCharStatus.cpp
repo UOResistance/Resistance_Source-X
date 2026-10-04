@@ -1,6 +1,7 @@
 //  CChar is either an NPC or a Player.
 
-#include "../../common/CExpression.h"
+//#include "../../common/CExpression.h" // included in the precompiled header
+//#include "../../common/CScriptParserBufs.h" // included in the precompiled header via CExpression.h
 #include "../../common/CLog.h"
 #include "../components/CCPropsItemEquippable.h"
 #include "../components/CCPropsItemWeapon.h"
@@ -160,13 +161,13 @@ CItemContainer *CChar::GetBank( LAYER_TYPE layer )
 			layer = LAYER_BANKBOX;
 			break;
 	}
-	
+
 	CItem *pItemTest = LayerFind(layer);
 	CItemContainer *pBankBox = dynamic_cast<CItemContainer *>(pItemTest);
 	if ( pBankBox )
 		return pBankBox;
 
-	if ( !g_Serv.IsLoading() )
+	if ( !g_Serv.IsLoadingGeneric() )
 	{
 		if ( pItemTest )
 		{
@@ -218,7 +219,7 @@ CItem *CChar::LayerFind( LAYER_TYPE layer ) const
 	return nullptr;
 }
 
-TRIGRET_TYPE CChar::OnCharTrigForLayerLoop( CScript &s, CTextConsole *pSrc, CScriptTriggerArgs *pArgs, CSString *pResult, LAYER_TYPE layer )
+TRIGRET_TYPE CChar::OnCharTrigForLayerLoop( CScript &s, CScriptTriggerArgsPtr const& pScriptArgs, CTextConsole *pSrc, CSString *pResult, LAYER_TYPE layer )
 {
 	ADDTOCALLSTACK("CChar::OnCharTrigForLayerLoop");
 	const CScriptLineContext StartContext = s.GetContext();
@@ -229,7 +230,7 @@ TRIGRET_TYPE CChar::OnCharTrigForLayerLoop( CScript &s, CTextConsole *pSrc, CScr
 		CItem* pItem = static_cast<CItem*>(pObjRec);
 		if ( pItem->GetEquipLayer() == layer )
 		{
-			TRIGRET_TYPE iRet = pItem->OnTriggerRun(s, TRIGRUN_SECTION_TRUE, pSrc, pArgs, pResult);
+            TRIGRET_TYPE iRet = pItem->OnTriggerRun(s, TRIGRUN_SECTION_TRUE, pScriptArgs, pSrc, pResult);
 			if ( iRet == TRIGRET_BREAK )
 			{
 				EndContext = StartContext;
@@ -247,7 +248,7 @@ TRIGRET_TYPE CChar::OnCharTrigForLayerLoop( CScript &s, CTextConsole *pSrc, CScr
 	if ( EndContext.m_iOffset <= StartContext.m_iOffset )
 	{
 		// just skip to the end.
-		TRIGRET_TYPE iRet = OnTriggerRun(s, TRIGRUN_SECTION_FALSE, pSrc, pArgs, pResult);
+        TRIGRET_TYPE iRet = OnTriggerRun(s, TRIGRUN_SECTION_FALSE, pScriptArgs, pSrc, pResult);
 		if ( iRet != TRIGRET_ENDIF )
 			return iRet;
 	}
@@ -384,6 +385,7 @@ LAYER_TYPE CChar::CanEquipLayer( CItem *pItem, LAYER_TYPE layer, CChar *pCharMsg
                 case IT_CONTAINER:
                 case IT_CONTAINER_LOCKED:
                     fCantEquip = false;
+                default:
                     break;
             }
             break;
@@ -573,7 +575,7 @@ NPCBRAIN_TYPE CChar::GetNPCBrainAuto() const noexcept
 	//ADDTOCALLSTACK("CChar::GetNPCBrainAuto");
 	// Auto-detect the brain
 	const CREID_TYPE id = GetDispID();
-	
+
 	switch (id)
 	{
 		//TODO: add other dragons
@@ -600,6 +602,8 @@ NPCBRAIN_TYPE CChar::GetNPCBrainAuto() const noexcept
 		case CREID_BULL_FROG:
 		case CREID_DOLPHIN:
 			return NPCBRAIN_ANIMAL;
+        default:
+            break;
 	}
 
 	if (id >= CREID_IRON_GOLEM)
@@ -698,13 +702,13 @@ byte CChar::GetModeFlag( const CClient *pViewer ) const
 
 	if ( IsStatFlag(STATF_INVUL) )
 		mode |= CHARMODE_YELLOW;
-	if ( GetPrivLevel() > PLEVEL_Player )
+	if (GetPrivLevel() > PLEVEL_Player || IsSetEF(EF_WalkBypassMonsters))
 		mode |= CHARMODE_IGNOREMOBS;
 	if ( IsStatFlag(STATF_WAR) )
 		mode |= CHARMODE_WAR;
 
 	uint64 iFlags = STATF_SLEEPING;
-	
+
 	//When you want change the color of character anim, you must evitate to send CHARMODE_INVIS because the anim will automaticly be grey
 	//Here we check if it's define on the ini that you need override the color
 	if ( !g_Cfg.m_iColorInvis )			//Serv.ColorInvis
@@ -713,7 +717,7 @@ byte CChar::GetModeFlag( const CClient *pViewer ) const
         iFlags |= STATF_HIDDEN;
 	if ( !g_Cfg.m_iColorInvisSpell )	//serv.ColorInvisSpell
         iFlags |= STATF_INVISIBLE;
-	
+
 	if ( IsStatFlag(iFlags) )	// Checking if I have any of these settings enabled on the ini and I have any of them, if so ... CHARMODE_INVIS is set and color applied.
         mode |= CHARMODE_INVIS; //When sending CHARMODE_INVIS state to client, your character anim are grey
 
@@ -938,6 +942,9 @@ CChar * CChar::GetOwner() const
 
 bool CChar::CanDress(const CChar* pChar) const
 {
+    // Self dressing always allowed
+    if (pChar == this)
+        return true;
     if (IsPriv(PRIV_GM) && (GetPrivLevel() > pChar->GetPrivLevel() || GetPrivLevel() == PLEVEL_Owner))
         return true;
     else if (g_Cfg.m_fCanUndressPets && pChar->IsOwnedBy(this))
@@ -981,74 +988,25 @@ lpctstr CChar::GetTradeTitle() const // Paperdoll title for character p (2)
 	{
 		if ( !IsIndividualName() )
 			return "";	// same as type anyhow.
-		lpctstr ptcArticle = pCharDef->IsFemale() ? g_Cfg.GetDefaultMsg(DEFMSG_TRADETITLE_ARTICLE_FEMALE) : g_Cfg.GetDefaultMsg(DEFMSG_TRADETITLE_ARTICLE_MALE);
-		snprintf(pTemp, Str_TempLength(), "%s %s", ptcArticle, pCharDef->GetTradeName());
-		return pTemp;
-	}
+
+        //auto gReader = g_ExprGlobals.mtEngineLockedReader();
+        lpctstr ptcArticle = g_Cfg.GetDefaultMsg(
+            pCharDef->IsFemale()
+                ? DEFMSG_TRADETITLE_ARTICLE_FEMALE
+                : DEFMSG_TRADETITLE_ARTICLE_MALE);
+        snprintf(pTemp, Str_TempLength(), "%s %s", ptcArticle, pCharDef->GetTradeName());
+        return pTemp;
+    }
 
 	// Only players can have skill titles
 	if ( !m_pPlayer )
 		return pTemp;
 
 	int len;
-	SKILL_TYPE skill = Skill_GetBest();
-	if ( skill == SKILL_NINJITSU )
-	{
-		static const CValStr sm_SkillTitles[] =
-		{
-			{ "", INT32_MIN },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_NEOPHYTE),	(int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_NEOPHYTE")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_NOVICE), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_NOVICE")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_APPRENTICE), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_APPRENTICE")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_JOURNEYMAN), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_JOURNEYMAN")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_EXPERT), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_EXPERT")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_ADEPT), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_ADEPT")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_MASTER), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_MASTER")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_GRANDMASTER), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_GRANDMASTER")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_ELDER_NINJITSU), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_ELDER")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_LEGENDARY_NINJITSU), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_LEGENDARY")) },
-			{ nullptr, INT32_MAX }
-		};
-		len = snprintf(pTemp, Str_TempLength(), "%s ", sm_SkillTitles->FindName(Skill_GetBase(skill)));
-	}
-	else if ( skill == SKILL_BUSHIDO )
-	{
-		static const CValStr sm_SkillTitles[] =
-		{
-			{ "", INT32_MIN },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_NEOPHYTE),	(int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_NEOPHYTE")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_NOVICE), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_NOVICE")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_APPRENTICE), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_APPRENTICE")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_JOURNEYMAN), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_JOURNEYMAN")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_EXPERT), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_EXPERT")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_ADEPT), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_ADEPT")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_MASTER), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_MASTER")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_GRANDMASTER), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_GRANDMASTER")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_ELDER_BUSHIDO), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_ELDER")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_LEGENDARY_BUSHIDO), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_LEGENDARY")) },
-			{ nullptr, INT32_MAX }
-		};
-		len = snprintf(pTemp, Str_TempLength(), "%s ", sm_SkillTitles->FindName(Skill_GetBase(skill)));
-	}
-	else
-	{
-		static const CValStr sm_SkillTitles[] =
-		{
-			{ "", INT32_MIN },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_NEOPHYTE),	(int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_NEOPHYTE")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_NOVICE), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_NOVICE")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_APPRENTICE), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_APPRENTICE")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_JOURNEYMAN), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_JOURNEYMAN")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_EXPERT), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_EXPERT")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_ADEPT), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_ADEPT")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_MASTER), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_MASTER")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_GRANDMASTER),(int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_GRANDMASTER")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_ELDER), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_ELDER")) },
-			{ g_Cfg.GetDefaultMsg(DEFMSG_SKILLTITLE_LEGENDARY), (int)(g_Exp.m_VarDefs.GetKeyNum("SKILLTITLE_LEGENDARY")) },
-			{ nullptr, INT32_MAX }
-		};
-		len = snprintf(pTemp, Str_TempLength(), "%s ", sm_SkillTitles->FindName(Skill_GetBase(skill)));
-	}
+    const SKILL_TYPE skill = Skill_GetBest();
+    const uint uiSkVal = Skill_GetBase(skill);
+    len = snprintf(pTemp, Str_TempLength(),
+                           "%s ", g_ExprGlobals.mtEngineLockedReader()->SkillTitle(skill, uiSkVal));
 
 	snprintf(pTemp + len, Str_TempLength() - len, "%s", g_Cfg.GetSkillDef(skill)->m_sTitle.GetBuffer());
 	return pTemp;
@@ -1134,6 +1092,7 @@ bool CChar::CanSeeInContainer( const CItemContainer *pContItem ) const
 	return true;
 }
 
+// TODO: restore some const safety... remove const_cast and make this function non-const
 bool CChar::CanSee( const CObjBaseTemplate *pObj ) const
 //true = client can see the invisble target
 {
@@ -1257,12 +1216,12 @@ bool CChar::CanSee( const CObjBaseTemplate *pObj ) const
 			{
 				if ( IsTrigUsed( TRIGGER_SEEHIDDEN ) )
 				{
-					CScriptTriggerArgs Args;
-					Args.m_iN1 = (plevelMe <= plevelChar);
+                    CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+                    pScriptArgs->m_iN1 = (plevelMe <= plevelChar);
 					CChar *pChar2 = const_cast< CChar* >( pChar );
 					CChar *this2 = const_cast< CChar* >( this );
-					this2->OnTrigger( CTRIG_SeeHidden, pChar2, &Args );
-					return ( Args.m_iN1 != 1 );
+                    this2->OnTrigger( CTRIG_SeeHidden, pScriptArgs, pChar2 );
+                    return ( pScriptArgs->m_iN1 != 1 );
 				}
 			}
 			//Here we analyse how GM can see other player/GM when they are hide.
@@ -1413,7 +1372,7 @@ bool CChar::CanTouch( const CObjBase *pObj )
 		default:
 			break;
 		}
-        
+
         if ( !fDeathImmune && IsStatFlag(STATF_FREEZE) )
         {
             if ( !fFreezeImmune && !pItem->IsAttr(ATTR_CANUSE_PARALYZED) )
@@ -1560,7 +1519,7 @@ bool CChar::CanHear( const CObjBaseTemplate *pSrc, TALKMODE_TYPE mode ) const
 	else
     {
 		pSrcRegion = dynamic_cast<CRegionWorld *>(pSrc->GetTopPoint().GetRegion(REGION_TYPE_MULTI|REGION_TYPE_AREA));
-    }	
+    }
 	if ( !pSrcRegion || !m_pArea )  // should not happen really.
 		return false;
 
@@ -1627,7 +1586,7 @@ bool CChar::CanHear( const CObjBaseTemplate *pSrc, TALKMODE_TYPE mode ) const
     if ( m_pArea == pSrcRegion )// same region is always ok.
        return true;
 
-    // Different region (which can be a multi or an areadef). 
+    // Different region (which can be a multi or an areadef).
     if ( IsSetOF(OF_NoHouseMuteSpeech) )
         return true;
 
@@ -1888,7 +1847,7 @@ bool CChar::CanStandAt(CPointMap *ptDest, const CRegion* pArea, uint64 uiMyMovem
         const short iHeightDiff = (blockingState->m_Top.m_z - blockingState->m_Bottom.m_z);
         const height_t uiHeightReq = fTopLandTile ? (uiMyHeight / 2) : uiMyHeight;
 
-        if (!fPathfinding && (g_Cfg.m_iDebugFlags & DEBUGF_WALK))
+        if (!fPathfinding && (g_Cfg.m_iDebugFlags & DEBUGF_WALK) && IsPlayer())
         {
             g_Log.EventWarn("block.m_Top.m_z (%hhd) - block.m_Bottom.m_z (%hhd) < m_zClimbHeight (%hhu) + (block.m_Top.m_dwTile (0x%" PRIx32 ") > TERRAIN_QTY ? iHeightMount : iHeightMount/2 )(%hhu).\n",
                 blockingState->m_Top.m_z, blockingState->m_Bottom.m_z, m_zClimbHeight, blockingState->m_Top.m_dwTile, (height_t)(m_zClimbHeight + uiHeightReq));
@@ -1915,7 +1874,7 @@ bool CChar::CanStandAt(CPointMap *ptDest, const CRegion* pArea, uint64 uiMyMovem
     if ((uiMyMovementFlags != UINT64_MAX) && (uiMapPointMovementFlags != 0x0))
     {
         // It IS in my way and HAS a flag set, check further
-        if (!fPathfinding && (g_Cfg.m_iDebugFlags & DEBUGF_WALK))
+        if (!fPathfinding && (g_Cfg.m_iDebugFlags & DEBUGF_WALK) && IsPlayer())
             g_Log.EventWarn("BOTTOMitemID (0%" PRIx32 ") TOPitemID (0%" PRIx32 ").\n", (blockingState->m_Bottom.m_dwTile - TERRAIN_QTY), (blockingState->m_Top.m_dwTile - TERRAIN_QTY));
 
         if (uiMapPointMovementFlags & CAN_I_WATER)
@@ -1964,7 +1923,7 @@ bool CChar::CanStandAt(CPointMap *ptDest, const CRegion* pArea, uint64 uiMyMovem
             }
         }
 
-        if (!fPathfinding && (g_Cfg.m_iDebugFlags & DEBUGF_WALK))
+        if (!fPathfinding && (g_Cfg.m_iDebugFlags & DEBUGF_WALK) && IsPlayer())
             g_Log.EventWarn("block.m_Lowest.m_z %hhd, block.m_Bottom.m_z %hhd, block.m_Top.m_z %hhd.\n", blockingState->m_Lowest.m_z, blockingState->m_Bottom.m_z, blockingState->m_Top.m_z);
 
         if (blockingState->m_Bottom.m_z >= UO_SIZE_Z)
@@ -2000,7 +1959,7 @@ bool CChar::CanStandAt(CPointMap *ptDest, const CRegion* pArea, uint64 uiMyMovem
                     }
                     else if (uiMapPointMovementFlags & CAN_I_CLIMB)
                     {
-                        // If dwBlockFlags & CAN_I_CLIMB, then it's a "climbable" item (and i can climb it, 
+                        // If dwBlockFlags & CAN_I_CLIMB, then it's a "climbable" item (and i can climb it,
                         //  since i don't have CAN_I_CLIMB in uiBlockedBy)
                     }
                     else
@@ -2015,7 +1974,7 @@ bool CChar::CanStandAt(CPointMap *ptDest, const CRegion* pArea, uint64 uiMyMovem
         }
     }
 
-    if (!fPathfinding && (g_Cfg.m_iDebugFlags & DEBUGF_WALK))
+    if (!fPathfinding && (g_Cfg.m_iDebugFlags & DEBUGF_WALK) && IsPlayer())
         g_Log.EventWarn("GetHeightMount() %hhu, block.m_Top.m_z %hhd, ptDest.m_z %hhd.\n", uiMyHeight, blockingState->m_Top.m_z, ptDest->m_z);
 
     if (IsStatFlag(STATF_ONHORSE) && (uiMyHeight + ptDest->m_z >= blockingState->m_Top.m_z) && g_Cfg.m_iMountHeight && !IsPriv(PRIV_GM) && !IsPriv(PRIV_ALLMOVE))
@@ -2083,7 +2042,7 @@ CRegion *CChar::CheckValidMove( CPointMap &ptDest, uint64 *uiBlockFlags, DIR_TYP
     CRegion *pArea = ptDest.GetRegion(REGION_TYPE_MULTI|REGION_TYPE_AREA|REGION_TYPE_ROOM);
 	if ( !pArea )
 	{
-		//if (g_Cfg.m_iDebugFlags & DEBUGF_WALK)
+		//if (g_Cfg.m_iDebugFlags & DEBUGF_WALK && IsPlayer())
 		g_Log.EventWarn("WalkCheck: failed to get the destination region at P=%d,%d,%d,%d (UID: 0%x, name: %s).\n",
             ptDest.m_x, ptDest.m_y, ptDest.m_z, ptDest.m_map, (dword)GetUID(), GetName());
 		return nullptr;
@@ -2094,15 +2053,15 @@ CRegion *CChar::CheckValidMove( CPointMap &ptDest, uint64 *uiBlockFlags, DIR_TYP
 	const uint64 uiCanFlags = GetCanFlags();
 	const uint64 uiMovementCan = GetCanMoveFlags(uiCanFlags);  // actions i can perform to step on a tile (some tiles require a specific ability, like to swim for the water)
 
-	if (g_Cfg.m_iDebugFlags & DEBUGF_WALK)
-		g_Log.EventWarn("GetCanMoveFlags() (0x%" PRIx64 ").\n", uiMovementCan);
+	if (g_Cfg.m_iDebugFlags & DEBUGF_WALK && IsPlayer())
+		g_Log.EventWarn("GetCanMoveFlags() (flags: 0x%" PRIx64 ", uid: 0%x, name: %s, location: %d,%d,%d,%d).\n",
+		    uiMovementCan, static_cast<dword>(GetUID()), GetName(), ptDest.m_x, ptDest.m_y, ptDest.m_z, ptDest.m_map);
 	if (!(uiMovementCan & CAN_C_MOVEMENTCAPABLEMASK))
 		return nullptr;	// cannot move at all, so WTF?
 
-
     const height_t uiHeight = IsSetEF(EF_WalkCheckHeightMounted) ? GetHeightMount() : GetHeight();
     CServerMapBlockingState blockingState(uiMovementCan, ptDest.m_z, ptDest.m_z + m_zClimbHeight + uiHeight, ptDest.m_z + m_zClimbHeight + 3, uiHeight);
-    if (g_Cfg.m_iDebugFlags & DEBUGF_WALK)
+    if (g_Cfg.m_iDebugFlags & DEBUGF_WALK && IsPlayer())
     {
         g_Log.EventWarn("\t\tCServerMapBlockState block( 0%" PRIx64 ", %d, %d, %d ); ptDest.m_z(%d) m_zClimbHeight(%d).\n",
             uiMovementCan, ptDest.m_z, ptDest.m_z + m_zClimbHeight + uiHeight, ptDest.m_z + m_zClimbHeight + 2, ptDest.m_z, m_zClimbHeight);

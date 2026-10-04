@@ -20,7 +20,13 @@ struct CScriptLineContext
 
     void Init();
     bool IsValid() const;
-    CScriptLineContext();
+
+    constexpr CScriptLineContext() noexcept :
+        m_iOffset(-1), m_iLineNum(-1)
+    {};
+    constexpr CScriptLineContext(int iOffset, int iLineNum) noexcept :
+        m_iOffset(iOffset), m_iLineNum(iLineNum)
+    {};
 };
 
 class CScriptFileContext

@@ -3,7 +3,7 @@ name: CodeQL
 
 on:
   push:
-    branches: ["static-analysis"]
+    branches: ["static-analysis", "master", "main"]
     paths-ignore:
       - '.gitignore'
       - '.gitattributes'
@@ -22,7 +22,7 @@ on:
 jobs:
   analyze:
     name: Analyze
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       actions: read
       contents: read
@@ -37,26 +37,28 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
 
     - name: Install prerequisites
       run:  |
             lsb_release -d
 
             sudo add-apt-repository universe && sudo sudo apt-get -qq update
-            sudo apt install -yq --no-install-recommends ninja-build gcc-12 g++-12 > /dev/null
-            sudo apt install -yq --no-install-recommends mariadb-client libmariadb-dev
+            sudo apt-get install -yq --no-install-recommends \
+              ninja-build gcc-12 g++-12 \
+              mariadb-client libmariadb-dev
             sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 90 --slave /usr/bin/g++ g++ /usr/bin/g++-12
 
     - name: Report building tools
       run:  |
             echo "GCC:" && gcc -v
+            echo "Default Linker:" && ld -v
             echo && echo "CMake:" && cmake --version
             #echo && echo "Ninja:" && ninja --version
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v2
+      uses: github/codeql-action/init@v4
       with:
         languages: ${{ matrix.language }}
         config-file: ./.github/codeql/codeql-config.yml
@@ -65,7 +67,7 @@ jobs:
         # If you wish to specify custom queries, you can do so here or in a config file.
         # By default, queries listed here will override any specified in a config file.
         # Prefix the list here with "+" to use these queries and those in the config file.
-        
+
         # Details on CodeQL's query packs refer to : https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
         # queries: security-extended,security-and-quality
         # c++ queries: https://codeql.github.com/codeql-query-help/cpp-cwe/
@@ -86,7 +88,7 @@ jobs:
     # https://josh-ops.com/posts/github-codeql-ignore-files/
     # https://github.com/advanced-security/filter-sarif
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
+      uses: github/codeql-action/analyze@v4
       with:
         category: "/language:${{matrix.language}}"
         upload: false # disable the upload here - we will upload in a different action
@@ -101,6 +103,6 @@ jobs:
         output: sarif-results/${{ matrix.language }}.sarif
 
     - name: Upload SARIF
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: sarif-results/${{ matrix.language }}.sarif

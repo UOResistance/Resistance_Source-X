@@ -3,7 +3,8 @@
 #include "../../network/send.h"
 #include "../../common/resource/sections/CItemTypeDef.h"
 #include "../../common/sphere_library/CSRand.h"
-#include "../../common/CExpression.h"
+//#include "../../common/CExpression.h" // included in the precompiled header
+//#include "../../common/CScriptParserBufs.h" // included in the precompiled header via CExpression.h
 #include "../../common/CLog.h"
 #include "../chars/CChar.h"
 #include "../items/CItemCorpse.h"
@@ -88,19 +89,32 @@ bool CClient::OnTarg_Obj_Set( CObjBase * pObj )
 bool CClient::OnTarg_Obj_Function( CObjBase * pObj, const CPointMap & pt, ITEMID_TYPE id )
 {
 	ADDTOCALLSTACK("CClient::OnTarg_Obj_Function");
-	m_Targ_p	= pt;
-	lpctstr	pSpace	= strchr( m_Targ_Text, ' ' );
+    m_Targ_p = pt;
+    lpctstr	pSpace = strchr( m_Targ_Text, ' ' );
 	if ( !pSpace )
 		pSpace	= strchr( m_Targ_Text, '\t' );
 	if ( pSpace )
 		GETNONWHITESPACE( pSpace );
 
-	CScriptTriggerArgs	Args( pSpace ? pSpace : "" );
-	Args.m_VarsLocal.SetNum( "ID", id, true );
-	Args.m_pO1	= pObj;
-	CSString sVal;
-	m_pChar->r_Call( static_cast<lpctstr>(m_Targ_Text), this, &Args, &sVal );
-	return true;
+    lpctstr ptcFunction = m_Targ_Text.GetBuffer();
+    const size_t uiFunctionIndex = r_GetFunctionIndex(ptcFunction);
+    if ( r_CanCall(uiFunctionIndex) )
+    {
+        // It's a scripted FUNCTION
+        CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+        pScriptArgs->Init(pSpace ? pSpace : "");
+        pScriptArgs->m_VarsLocal.SetNum( "ID", id, true );
+        pScriptArgs->m_pO1 = pObj;
+        CSString sVal;
+        m_pChar->r_Call(m_Targ_Text.GetBuffer(), pScriptArgs, this, &sVal );
+        return true;
+    }
+    return false;
+
+    // TODO: enable this? leave it working only with scripted functions?
+    // This function might not exist at all, or simply it is a hardcoded verb/command...
+    //CScript s(ptcFunction);
+    //return m_pChar->r_Verb(s, nullptr);
 }
 
 
@@ -283,7 +297,7 @@ bool CClient::OnTarg_UnExtract( CObjBase * pObj, const CPointMap & pt )
 	// result of the MULTI command.
 	// Break a multi out of the multi.txt files and turn it into items.
 
-	if ( !pt.GetRegion(REGION_TYPE_AREA) )
+    if ( !pt.GetRegion(REGION_TYPE_AREA) ) //TODO: add err message
 		return false;
 
 	CScript s;	// It is not really a valid script type file.
@@ -330,7 +344,7 @@ bool CClient::OnTarg_Char_Add( CObjBase * pObj, const CPointMap & pt )
 	ASSERT(m_pChar);
 
 	if ( !pt.GetRegion(REGION_TYPE_AREA) )
-		return false;
+        return false; //TODO: add err message
 	if ( pObj && pObj->IsItemInContainer() )
 		return false;
 
@@ -356,7 +370,7 @@ bool CClient::OnTarg_Item_Add( CObjBase * pObj, CPointMap & pt )
 	// m_tmAdd.m_id = item id
 	ASSERT(m_pChar);
 
-	if ( !pt.GetRegion(REGION_TYPE_AREA) )
+    if ( !pt.GetRegion(REGION_TYPE_AREA) )  //TODO: add err message
 		return false;
 	if ( pObj && pObj->IsItemInContainer() )
 		return false;
@@ -747,6 +761,7 @@ int CClient::OnSkill_AnimalLore( CUID uid, int iSkillLevel, bool fTest )
 {
 	ADDTOCALLSTACK("CClient::OnSkill_AnimalLore");
 	UnreferencedParameter(iSkillLevel);
+    // Returns: difficulty.
 	// SKILL_ANIMALLORE
 	// The creature is a "human" etc..
 	// How happy.
@@ -767,15 +782,17 @@ int CClient::OnSkill_AnimalLore( CUID uid, int iSkillLevel, bool fTest )
 	if ( fTest )
 	{
 		if ( pChar == m_pChar )
-			return( 2 );
+            return 2;
+
 		if ( m_pChar->IsStatFlag( STATF_ONHORSE ) )
 		{
 			CItem * pItem = m_pChar->LayerFind( LAYER_HORSE );
 			if ( pItem && pItem->m_itFigurine.m_UID == uid)
 				return 1;
 		}
+
 		if ( pChar->IsPlayableCharacter())
-			return( g_Rand.GetVal(10));
+            return g_Rand.GetVal(10);
 		return g_Rand.GetVal(60);
 	}
 
@@ -787,19 +804,28 @@ int CClient::OnSkill_AnimalLore( CUID uid, int iSkillLevel, bool fTest )
 	// What kind of animal.
 	if ( pChar->IsIndividualName())
 	{
-		snprintf(pszTemp, Str_TempLength(), g_Cfg.GetDefaultMsg(DEFMSG_ANIMALLORE_RESULT), pChar->GetName(), pChar->Char_GetDef()->GetTradeName());
+        snprintf(pszTemp, Str_TempLength(), g_Cfg.GetDefaultMsg(DEFMSG_ANIMALLORE_RESULT),
+            pChar->GetName(), pChar->Char_GetDef()->GetTradeName());
 		addObjMessage(pszTemp, pChar);
 	}
 
 	// Who is master ?
-	CChar * pCharOwner = pChar->NPC_PetGetOwner();
+    CChar * pCharOwner = nullptr;
+    if (pChar->IsNPC())
+    {
+        pCharOwner = pChar->NPC_PetGetOwner();
+    }
+
 	if ( pCharOwner == nullptr )
 	{
-		snprintf(pszTemp, Str_TempLength(), g_Cfg.GetDefaultMsg( DEFMSG_ANIMALLORE_FREE ), pszHe, pszHis);
+        snprintf(pszTemp, Str_TempLength(), g_Cfg.GetDefaultMsg( DEFMSG_ANIMALLORE_FREE ),
+            pszHe, pszHis);
 	}
 	else
 	{
-		snprintf(pszTemp, Str_TempLength(), g_Cfg.GetDefaultMsg( DEFMSG_ANIMALLORE_MASTER ), pszHe, ( pCharOwner == m_pChar ) ? g_Cfg.GetDefaultMsg( DEFMSG_ANIMALLORE_MASTER_YOU ) : pCharOwner->GetName());
+        lpctstr ptcMasterName = ( pCharOwner == m_pChar ) ? g_Cfg.GetDefaultMsg( DEFMSG_ANIMALLORE_MASTER_YOU ) : pCharOwner->GetName();
+        snprintf(pszTemp, Str_TempLength(), g_Cfg.GetDefaultMsg( DEFMSG_ANIMALLORE_MASTER ),
+            pszHe, ptcMasterName);
 		// How loyal to master ?
 	}
 	addObjMessage(pszTemp, pChar );
@@ -1011,7 +1037,7 @@ int CClient::OnSkill_ArmsLore( CUID uid, int iSkillLevel, bool fTest )
 		case IT_CLOTHING:
 		case IT_JEWELRY:
 			fWeapon = false;
-			iHitsCur = pItem->m_itArmor.m_dwHitsCur;
+			iHitsCur = pItem->m_itArmor.m_wHitsCur;
 			iHitsMax = pItem->m_itArmor.m_wHitsMax;
 			len += snprintf( pszTemp, Str_TempLength(), g_Cfg.GetDefaultMsg( DEFMSG_ARMSLORE_DEF ), pItem->Armor_GetDefense());
 			break;
@@ -1027,7 +1053,7 @@ int CClient::OnSkill_ArmsLore( CUID uid, int iSkillLevel, bool fTest )
 		case IT_WEAPON_XBOW:
 		case IT_WEAPON_THROWING:
 			fWeapon = true;
-			iHitsCur = pItem->m_itWeapon.m_dwHitsCur;
+			iHitsCur = pItem->m_itWeapon.m_wHitsCur;
 			iHitsMax = pItem->m_itWeapon.m_wHitsMax;
 			len += snprintf( pszTemp, Str_TempLength(), g_Cfg.GetDefaultMsg( DEFMSG_ARMSLORE_DAM ), pItem->Weapon_GetAttack());
 			break;
@@ -1206,7 +1232,7 @@ int CClient::OnSkill_Forensics( CUID uid, int iSkillLevel, bool fTest )
 	{
 		int len = snprintf( pszTemp, Str_TempLength(), g_Cfg.GetDefaultMsg(DEFMSG_FORENSICS_TIMER),
             pCorpse->GetName(),
-            (CWorldGameTime::GetCurrentTime().GetTimeDiff(pCorpse->GetTimeStampS() * MSECS_PER_SEC) / MSECS_PER_SEC));
+            (CWorldGameTime::GetCurrentTime().GetTimeDiff(pCorpse->GetTimeStampS()) / MSECS_PER_SEC));
 
 		if ( pName )
 			snprintf( pszTemp + len, Str_TempLength() - len, g_Cfg.GetDefaultMsg(DEFMSG_FORENSICS_NAME), pName );
@@ -1656,7 +1682,7 @@ CItem * CClient::OnTarg_Use_Multi(const CItemBase * pItemDef, CPointMap & pt, CI
     ADDTOCALLSTACK("CClient::OnTarg_Use_Multi");
     // Might be a IT_MULTI or it might not. place it anyhow.
 
-    if ((pItemDef == nullptr) || !pt.GetRegion(REGION_TYPE_AREA))
+    if ((pItemDef == nullptr) || !pt.GetRegion(REGION_TYPE_AREA))  //TODO: add err message
         return nullptr;
 
     return CItemMulti::Multi_Create(GetChar(), pItemDef, pt, pDeed);
@@ -1714,8 +1740,9 @@ bool CClient::OnTarg_Use_Item( CObjBase * pObjTarg, CPointMap & pt, ITEMID_TYPE 
 
 	if (( IsTrigUsed(CItem::sm_szTrigName[trigtype]) ) || ( IsTrigUsed(CChar::sm_szTrigName[(CTRIG_itemAfterClick - 1) + trigtype]) )) //ITRIG_TARGON_GROUND, ITRIG_TARGON_CHAR, ITRIG_TARGON_ITEM
 	{
-		CScriptTriggerArgs	Args( id, 0, pObjTarg );
-		if ( pItemUse->OnTrigger( trigtype, m_pChar, &Args ) == TRIGRET_RET_TRUE )
+        CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+        pScriptArgs->Init(id, 0, 0, pObjTarg);
+        if ( pItemUse->OnTrigger( trigtype, pScriptArgs, m_pChar ) == TRIGRET_RET_TRUE )
 			return true;
 	}
 
@@ -2464,8 +2491,7 @@ bool CClient::OnTarg_Party_Add( CChar * pChar )
 
 	if ( IsTrigUsed(TRIGGER_PARTYINVITE) )
 	{
-		CScriptTriggerArgs args;
-		if ( pChar->OnTrigger(CTRIG_PartyInvite, m_pChar, &args) == TRIGRET_RET_TRUE )
+        if ( pChar->OnTrigger(CTRIG_PartyInvite, CScriptParserBufs::GetCScriptTriggerArgsPtr(), m_pChar) == TRIGRET_RET_TRUE )
 			return false;
 	}
 

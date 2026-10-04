@@ -1,10 +1,10 @@
 /**
-* @file CSectorTemplate.h
+* @file CSectorBase.h
 *
 */
 
-#ifndef _INC_CSECTORTEMPLATE_H
-#define _INC_CSECTORTEMPLATE_H
+#ifndef _INC_CSECTORBASE_H
+#define _INC_CSECTORBASE_H
 
 #include "../common/sphere_library/CSObjCont.h"
 #include "../common/sphere_library/CSObjSortArray.h"
@@ -16,13 +16,14 @@ class CItem;
 class CSector;
 class CTeleport;
 
-struct CSectorObjCont
+class CSectorObjCont
 {
     // Marker class, consider it as a "tag".
 };
 
-struct CCharsDisconnectList : public CSObjCont, public CSectorObjCont
+class CCharsDisconnectList : public CSObjCont, public CSectorObjCont
 {
+public:
 	CCharsDisconnectList();
     virtual ~CCharsDisconnectList();
 	CCharsDisconnectList(const CCharsDisconnectList& copy) = delete;
@@ -31,7 +32,7 @@ struct CCharsDisconnectList : public CSObjCont, public CSectorObjCont
 	void AddCharDisconnected(CChar* pChar);
 };
 
-struct CCharsActiveList : public CSObjCont, public CSectorObjCont
+class CCharsActiveList : public CSObjCont, public CSectorObjCont
 {
 private:
 	int m_iClients;				// How many clients in this sector now?
@@ -58,10 +59,8 @@ public:
 	}
 };
 
-struct CItemsList : public CSObjCont, public CSectorObjCont
+class CItemsList : public CSObjCont, public CSectorObjCont
 {
-	static bool sm_fNotAMove;	// hack flag to prevent items from bouncing around too much.
-
 public:
 	CItemsList() = default;
 	CItemsList(const CItemsList& copy) = delete;
@@ -99,11 +98,12 @@ class CSectorBase		// world sector
 
 
 protected:
-	uchar m_map;    // sector map
-    short _x, _y;   // x and y (row and column) of the sector in the map
-	int	m_index;    // sector index
+    int	m_index;            // Sector index in the 'sector grid'
+    CPointBase m_BasePointSectUnits; // Sector coordinates in the 'sector grid'.
+    CRectMap   m_MapRectWorldUnits;   // Map area inside this sector, in map coordinates.
 
 private:
+    // TODO: store indices instead of pointers, to make the class smaller?
 	CSector* _ppAdjacentSectors[DIR_QTY];
 
 public:
@@ -114,7 +114,7 @@ public:
 
 	CCharsActiveList		m_Chars_Active;		// CChar(s) activte in this CSector.
 	CCharsDisconnectList	m_Chars_Disconnect;	// dead NPCs, etc
-	CItemsList m_Items;				// CItem(s) in this CSector (not relevant if they have a timer set or not).
+    CItemsList m_Items;                         // CItem(s) in this CSector (not relevant if they have a timer set or not).
 
 public:
     /*
@@ -136,11 +136,11 @@ public:
 	virtual void Init(int index, uchar map, short x, short y);
 
 	// Location map units.
-	int GetIndex() const noexcept { return m_index; }
-	int GetMap() const noexcept { return m_map; }
-	CPointMap GetBasePoint() const;
-	CRectMap GetRect() const noexcept;
-	bool IsInDungeon() const;
+    int GetIndex() const noexcept               { return m_index; }
+    int GetMap() const noexcept                 { return m_BasePointSectUnits.m_map; }
+    CPointBase GetBasePointMapUnits() const noexcept;
+    constexpr const CPointBase& GetBasePointSectUnits() noexcept    { return m_BasePointSectUnits; }
+    constexpr const CRectMap& GetRectWorldUnits() const noexcept    { return m_MapRectWorldUnits; }
 
 	// CRegion
 	CRegion * GetRegion( const CPointBase & pt, dword dwType ) const;
@@ -153,10 +153,12 @@ public:
 	CTeleport * GetTeleport( const CPointMap & pt ) const;
 	bool AddTeleport( CTeleport * pTeleport );
 
-	bool IsFlagSet( dword dwFlag ) const noexcept;
+    constexpr bool IsFlagSet( dword dwFlag ) const noexcept {
+        return (m_dwFlags & dwFlag);
+    }
 
 #define SECF_NoSleep	0x00000001
 #define SECF_InstaSleep	0x00000002
 };
 
-#endif // _INC_CSECTORTEMPLATE_H
+#endif // _INC_CSECTORBASE_H

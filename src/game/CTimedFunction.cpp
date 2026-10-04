@@ -25,19 +25,6 @@ bool CTimedFunction::IsDeleted() const // virtual
 	return false;
 }
 
-
-bool CTimedFunction::_CanTick(bool fParentGoingToSleep) const // virtual
-{
-	UnreferencedParameter(fParentGoingToSleep);
-	return true;
-}
-
-bool CTimedFunction::CanTick(bool fParentGoingToSleep) const // virtual
-{
-	UnreferencedParameter(fParentGoingToSleep);
-	return true;
-}
-
 static bool _ExecTimedFunction(CUID&& uid, CScript&& s)
 {
 	CObjBase* obj = uid.ObjFind();
@@ -87,12 +74,12 @@ bool CTimedFunction::OnTick() // virtual
 	CUID uid;
 	CScript s;
 	{
-		MT_ENGINE_SHARED_LOCK_SET;
+        MT_ENGINE_SHARED_LOCK_SET(this);
 		uid.SetPrivateUID(_uidAttached);
 		s.ParseKey(_ptcCommand);
 	}
 
-	delete this; // This has to be the last function call to ever access this object!
+    delete this; // This has to be the last function/statement call to ever access this object!
 
 	// From now on, this object does NOT exist anymore!
 	return _ExecTimedFunction(std::move(uid), std::move(s));

@@ -48,7 +48,7 @@ void SetAbortImmediate(bool on) noexcept;
 [[noreturn]]
 void RaiseRecoverableAbort();
 [[noreturn]]
-void RaiseImmediateAbort();
+void RaiseImmediateAbort(int iErrCode);
 
 
 // -------------------------------------------------------------------
@@ -133,7 +133,11 @@ public:
 #endif
 
 // _EXC_CAUGHT
-#define _EXC_CAUGHT static_cast<AbstractSphereThread *>(ThreadHolder::get().current())->exceptionCaught()
+#if defined THREAD_TRACK_CALLSTACK && defined _EXCEPTIONS_DEBUG
+#   define _EXC_CAUGHT static_cast<AbstractSphereThread *>(ThreadHolder::get().current())->signalExceptionCaught()
+#else
+#   define _EXC_CAUGHT
+#endif
 
 /*--- Main (non SUB) macros ---*/
 

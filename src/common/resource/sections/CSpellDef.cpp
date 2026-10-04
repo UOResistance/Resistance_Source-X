@@ -1,8 +1,8 @@
 #include "../../../game/CServerConfig.h"
 #include "../../../game/game_macros.h"
 #include "../../../game/uo_files/uofiles_enums.h"
-#include "../../CException.h"
-#include "../../CExpression.h"
+//#include "../../CException.h" // included in the precompiled header
+//#include "../../CExpression.h" // included in the precompiled header
 #include "CSpellDef.h"
 
 
@@ -116,7 +116,7 @@ bool CSpellDef::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * pSrc
             sVal.FormatVal( m_idEffect );
             break;
         case SPC_FLAGS:
-            sVal.FormatULLVal( m_uiFlags );
+            sVal.FormatULLHex( m_uiFlags );
             break;
         case SPC_GROUP:
             sVal.FormatDWVal( m_dwGroup );

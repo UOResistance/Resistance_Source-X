@@ -1,8 +1,8 @@
 
-#include "../../common/CException.h"
-#include "../../common/CExpression.h"
+//#include "../../common/CException.h" // included in the precompiled header
+//#include "../../common/CExpression.h" // included in the precompiled header
+//#include "../../common/CScriptParserBufs.h" // included in the precompiled header via CExpression.h
 #include "../../common/CLog.h"
-#include "../../common/CScriptTriggerArgs.h"
 #include "../chars/CChar.h"
 #include "../CServer.h"
 #include "../CWorld.h"
@@ -100,20 +100,23 @@ lpctstr CItemStone::GetTypeName() const
 {
 	ADDTOCALLSTACK("CItemStone::GetTypeName");
 	CVarDefCont * pResult = nullptr;
-	switch ( GetType() )
-	{
-		case IT_STONE_GUILD:
-			pResult = g_Exp.m_VarDefs.GetKey("STONECONFIG_TYPENAME_GUILD");
-			break;
-		case IT_STONE_TOWN:
-			pResult = g_Exp.m_VarDefs.GetKey("STONECONFIG_TYPENAME_TOWN");
-			break;
-		default:
-			break;
-	}
+    {
+        auto gReader = g_ExprGlobals.mtEngineLockedReader();
+        switch ( GetType() )
+        {
+            case IT_STONE_GUILD:
+                pResult = gReader->m_VarDefs.GetKey("STONECONFIG_TYPENAME_GUILD");
+                break;
+            case IT_STONE_TOWN:
+                pResult = gReader->m_VarDefs.GetKey("STONECONFIG_TYPENAME_TOWN");
+                break;
+            default:
+                break;
+        }
 
-	if ( pResult == nullptr )
-		pResult = g_Exp.m_VarDefs.GetKey("STONECONFIG_TYPENAME_UNK");
+        if ( pResult == nullptr )
+            pResult = gReader->m_VarDefs.GetKey("STONECONFIG_TYPENAME_UNK");
+    }
 
 	return ( pResult == nullptr ) ? "" : pResult->GetValStr();
 }
@@ -172,7 +175,7 @@ lpctstr CItemStone::GetAlignName() const
 	else
 		return "";
 
-	lpctstr sRes = g_Exp.m_VarDefs.GetKeyStr(tsDefname);
+    lpctstr sRes = g_ExprGlobals.mtEngineLockedReader()->m_VarDefs.GetKeyStr(tsDefname);
 	return ( sRes == nullptr ) ? "" : sRes;
 }
 
@@ -220,16 +223,15 @@ bool CItemStone::r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef )
 		int nNumber = Exp_GetVal(ptcKey);
 		SKIP_SEPARATORS(ptcKey);
 
-		CStoneMember * pMember = static_cast <CStoneMember *>(GetContainerHead());
-
+        CStoneMember * pMember = static_cast <CStoneMember *>(GetContainerHead());
 		for ( int i = 0; pMember != nullptr; pMember = pMember->GetNext() )
-		{
-			if ( !pMember->GetLinkUID().IsChar() ) 
-				continue;
+        {
+            if ( !pMember->GetLinkUID().IsChar() )
+                continue;
 
 			if ( nNumber == i )
 			{
-				pRef = pMember; 
+				pRef = pMember;
 				return true;
 			}
 
@@ -251,7 +253,7 @@ bool CItemStone::r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef )
 			CStoneMember * pMemberGuild = GetMember( pMemberChar );
 			if ( pMemberGuild )
 			{
-				pRef = pMemberGuild; 
+				pRef = pMemberGuild;
 				return true;
 			}
 		}
@@ -269,7 +271,7 @@ bool CItemStone::r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef )
 
 		for ( int i = 0; pMember != nullptr; pMember = pMember->GetNext() )
 		{
-			if ( pMember->GetLinkUID().IsChar() ) 
+			if ( pMember->GetLinkUID().IsChar() )
 				continue;
 
 			if ( nNumber == i )
@@ -296,7 +298,7 @@ bool CItemStone::r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef )
 			CStoneMember * pGuild = GetMember( pMemberGuild );
 			if ( pGuild )
 			{
-				pRef = pGuild; 
+				pRef = pGuild;
 				return true;
 			}
 		}
@@ -400,12 +402,19 @@ bool CItemStone::r_LoadVal( CScript & s ) // Load an item Script
 			if (Arg_Qty < 1) // must at least provide the member uid
 				return false;
 
+            std::optional<dword> dwUID = Str_ToU(Arg_ppCmd[0]);
+            if (!dwUID.has_value())
+            {
+                g_Log.EventError("Invalid MEMBER UID '%s', ignoring.\n", Arg_ppCmd[0]);
+                return false;
+            }
+
 			new CStoneMember(
 				this,
-				CUID(ahextoi(Arg_ppCmd[0])), 											// Member's UID
+                CUID(dwUID.value()),                                                              // Member's UID
 				Arg_Qty > 2 ? (STONEPRIV_TYPE)(atoi(Arg_ppCmd[2])) : STONEPRIV_CANDIDATE,// Members priv level (use as a type)
 				Arg_Qty > 1 ? Arg_ppCmd[1] : "",										// Title
-				CUID(ahextoi(Arg_ppCmd[3])),											// Member is loyal to this
+                CUID(Str_ToU(Arg_ppCmd[3]).value_or(UID_PLAIN_CLEAR)),                  // Member is loyal to this
 				Arg_Qty > 4 ? (atoi( Arg_ppCmd[4] ) != 0) : 0,							// Paperdoll stone abbreviation (also if they declared war)
 				Arg_Qty > 5 ? (atoi( Arg_ppCmd[5] ) != 0) : 0,							// If we declared war
 				Arg_Qty > 6 ? atoi( Arg_ppCmd[6] ) : 0);								// AccountGold
@@ -430,7 +439,7 @@ bool CItemStone::r_LoadVal( CScript & s ) // Load an item Script
 		m_sCharter[i] = s.GetArgStr();
 		return true;
 	}
-	
+
 	return CItem::r_LoadVal(s);
 	EXC_CATCH;
 
@@ -478,7 +487,7 @@ bool CItemStone::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * pSr
 			{
 				for (; pMember != nullptr; pMember = pMember->GetNext())
 				{
-					if (!pMember->GetLinkUID().IsChar()) 
+					if (!pMember->GetLinkUID().IsChar())
 						continue;
 
 					++i;
@@ -496,12 +505,12 @@ bool CItemStone::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * pSr
 
 		for ( int i = 0 ; pMember != nullptr; pMember = pMember->GetNext() )
 		{
-			if (!pMember->GetLinkUID().IsChar()) 
+			if (!pMember->GetLinkUID().IsChar())
 				continue;
-				
+
 			if ( nNumber == i )
 			{
-				if (!pszCmd[0]) 
+				if (!pszCmd[0])
 					return true;
 
 				return pMember->r_WriteVal(pszCmd, sVal, pSrc);
@@ -566,7 +575,7 @@ bool CItemStone::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * pSr
 			{
 				for (; pMember != nullptr; pMember = pMember->GetNext())
 				{
-					if (pMember->GetLinkUID().IsChar()) 
+					if (pMember->GetLinkUID().IsChar())
 						continue;
 
 					i++;
@@ -584,12 +593,12 @@ bool CItemStone::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * pSr
 
 		for ( int i = 0 ; pMember != nullptr; pMember = pMember->GetNext() )
 		{
-			if (pMember->GetLinkUID().IsChar()) 
+			if (pMember->GetLinkUID().IsChar())
 				continue;
-				
+
 			if ( nNumber == i )
 			{
-				if (!pszCmd[0]) 
+				if (!pszCmd[0])
 					return true;
 
 				return pMember->r_WriteVal(pszCmd, sVal, pSrc);
@@ -666,14 +675,16 @@ bool CItemStone::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * pSr
 				CStoneMember * pMember = GetMember(pCharSrc);
 				CVarDefCont * pResult = nullptr;
 
+                auto gReader = g_ExprGlobals.mtEngineLockedReader();
 				if ( pMember == nullptr )
 				{
-					pResult = g_Exp.m_VarDefs.GetKey("STONECONFIG_VARIOUSNAME_NONMEMBER");
+                    pResult = gReader->m_VarDefs.GetKey("STONECONFIG_VARIOUSNAME_NONMEMBER");
 				}
 				else
 				{
-					pResult = pMember->IsAbbrevOn() ? g_Exp.m_VarDefs.GetKey("STONECONFIG_VARIOUSNAME_ABBREVON") :
-								g_Exp.m_VarDefs.GetKey("STONECONFIG_VARIOUSNAME_ABBREVOFF");
+                    pResult = pMember->IsAbbrevOn()
+                                ? gReader->m_VarDefs.GetKey("STONECONFIG_VARIOUSNAME_ABBREVON")
+                                : gReader->m_VarDefs.GetKey("STONECONFIG_VARIOUSNAME_ABBREVOFF");
 				}
 
 				sVal = pResult ? pResult->GetValStr() : "";
@@ -690,14 +701,14 @@ bool CItemStone::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * pSr
 
 				if ( pMember == nullptr )
 				{
-					pResult = g_Exp.m_VarDefs.GetKey("STONECONFIG_VARIOUSNAME_NONMEMBER");
+                    pResult = g_ExprGlobals.mtEngineLockedReader()->m_VarDefs.GetKey("STONECONFIG_VARIOUSNAME_NONMEMBER");
 				}
 				else
 				{
 					CChar * pLOYALTO = pMember->GetLoyalToUID().CharFind();
 					if ((pLOYALTO == nullptr) || (pLOYALTO == pCharSrc ))
 					{
-						pResult = g_Exp.m_VarDefs.GetKey("STONECONFIG_VARIOUSNAME_YOURSELF");
+                        pResult = g_ExprGlobals.mtEngineLockedReader()->m_VarDefs.GetKey("STONECONFIG_VARIOUSNAME_YOURSELF");
 					}
 					else
 					{
@@ -709,33 +720,36 @@ bool CItemStone::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * pSr
 				sVal = pResult ? pResult->GetValStr() : "";
 			}
 			return true;
-	
+
 		case STC_MASTER:
 			{
 				CChar * pMaster = GetMaster();
-				sVal = (pMaster) ? pMaster->GetName() : g_Exp.m_VarDefs.GetKeyStr("STONECONFIG_VARIOUSNAME_PENDVOTE");
+                sVal = (pMaster)
+                    ? pMaster->GetName()
+                    : g_ExprGlobals.mtEngineLockedReader()->m_VarDefs.GetKeyStr("STONECONFIG_VARIOUSNAME_PENDVOTE");
 			}
 			return true;
-	
+
 		case STC_MASTERGENDERTITLE:
 			{
 				CChar * pMaster = GetMaster();
 				if ( pMaster == nullptr )
 					sVal.Clear(); // If no master (vote pending)
-				else if ( pMaster->Char_GetDef()->IsFemale())
-					sVal = g_Exp.m_VarDefs.GetKeyStr("STONECONFIG_VARIOUSNAME_MASTERGENDERFEMALE");
-				else
-					sVal = g_Exp.m_VarDefs.GetKeyStr("STONECONFIG_VARIOUSNAME_MASTERGENDERMALE");
-			}
+                else
+                    sVal = g_ExprGlobals.mtEngineLockedReader()->m_VarDefs.GetKeyStr(
+                        pMaster->Char_GetDef()->IsFemale()
+                            ? "STONECONFIG_VARIOUSNAME_MASTERGENDERFEMALE"
+                            : "STONECONFIG_VARIOUSNAME_MASTERGENDERMALE");
+            }
 			return true;
-	
+
 		case STC_MASTERTITLE:
 			{
 				CStoneMember * pMember = GetMasterMember();
 				sVal = (pMember) ? pMember->GetTitle() : "";
 			}
 			return true;
-	
+
 		case STC_MASTERUID:
 			{
 				CChar * pMaster = GetMaster();
@@ -745,7 +759,7 @@ bool CItemStone::r_WriteVal( lpctstr ptcKey, CSString & sVal, CTextConsole * pSr
 					sVal.FormatHex( (dword) 0 );
 			}
 			return true;
-			
+
 		default:
 			return (fNoCallParent ? false : CItem::r_WriteVal( ptcKey, sVal, pSrc ));
 	}
@@ -1279,7 +1293,7 @@ bool CItemStone::CheckValidMember( CStoneMember * pMember )
 	}
 
 	// just delete this member. (it is mislinked)
-	DEBUG_ERR(( "Stone UID=0%x has mislinked member uid=0%x\n", 
+	DEBUG_ERR(( "Stone UID=0%x has mislinked member uid=0%x\n",
 		(dword) GetUID(), (dword) pMember->GetLinkUID()));
 	return false;
 }
@@ -1292,7 +1306,7 @@ int CItemStone::FixWeirdness()
 	int iResultCode = CItem::FixWeirdness();
 	if ( iResultCode )
 	{
-		return( iResultCode );
+        return iResultCode;
 	}
 
 	bool fChanges = false;
@@ -1302,6 +1316,8 @@ int CItemStone::FixWeirdness()
 		CStoneMember * pMemberNext = pMember->GetNext();
 		if ( ! CheckValidMember(pMember))
 		{
+            g_Log.EventError("Invalid MEMBER UID '0%" PRIx32 "', removing.\n", pMember->GetLinkUID().GetObjUID());
+
 			IT_TYPE oldtype = GetType();
 			SetAmount(0);	// turn off validation for now. we don't want to delete other members.
 			delete pMember;
@@ -1325,11 +1341,12 @@ bool CItemStone::IsAlliedWith( const CItemStone * pStone) const
 	if ( pStone == nullptr )
 		return false;
 
-	CScriptTriggerArgs Args;
-	Args.m_pO1 = const_cast<CItemStone *>(pStone);
+    CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+    pScriptArgs->m_pO1 = const_cast<CItemStone *>(pStone);
 	enum TRIGRET_TYPE tr = TRIGRET_RET_DEFAULT;
 
-	if ( const_cast<CItemStone *>(this)->r_Call("f_stonesys_internal_isalliedwith", &g_Serv, &Args, nullptr, &tr) )
+    // TODO: no const_cast please... we'll have to remove const from this method
+    if ( const_cast<CItemStone *>(this)->r_Call("f_stonesys_internal_isalliedwith", pScriptArgs, &g_Serv, nullptr, &tr) )
 	{
 		if ( tr == TRIGRET_RET_FALSE )
 			return false;
@@ -1362,11 +1379,11 @@ bool CItemStone::IsAtWarWith( const CItemStone * pEnemyStone ) const
 	if ( pEnemyStone == nullptr )
 		return false;
 
-	CScriptTriggerArgs Args;
-	Args.m_pO1 = const_cast<CItemStone *>(pEnemyStone);
+    CScriptTriggerArgsPtr pScriptArgs = CScriptParserBufs::GetCScriptTriggerArgsPtr();
+    pScriptArgs->m_pO1 = const_cast<CItemStone *>(pEnemyStone);
 	enum TRIGRET_TYPE tr = TRIGRET_RET_DEFAULT;
 
-	if ( const_cast<CItemStone *>(this)->r_Call("f_stonesys_internal_isatwarwith", &g_Serv, &Args, nullptr, &tr) )
+    if ( const_cast<CItemStone *>(this)->r_Call("f_stonesys_internal_isatwarwith", pScriptArgs, &g_Serv, nullptr, &tr) )
 	{
 		if ( tr == TRIGRET_RET_FALSE )
 			return false;

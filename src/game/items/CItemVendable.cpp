@@ -1,5 +1,5 @@
 
-#include "../../common/CException.h"
+//#include "../../common/CException.h" // included in the precompiled header
 #include "CItemVendable.h"
 
 CItemVendable::CItemVendable( ITEMID_TYPE id, CItemBase * pDef ) :
@@ -13,8 +13,12 @@ CItemVendable::CItemVendable( ITEMID_TYPE id, CItemBase * pDef ) :
 
 CItemVendable::~CItemVendable()
 {
-	// Nothing really to do...no dynamic memory has been allocated.
-	DeletePrepare();	// Must remove early because virtuals will fail in child destructor.
+    EXC_TRY("Cleanup in destructor");
+
+    // Must remove early because virtuals will fail in child destructor.
+    /*CObjBase::*/ DeletePrepare();
+
+    EXC_CATCH;
 }
 
 void CItemVendable::DupeCopy( const CObjBase * pItemObj )
@@ -197,7 +201,7 @@ dword CItemVendable::GetVendorPrice( int iConvertFactor , bool forselling )
 
 	if ( llPrice <= 0 )	// No price/overrride.value set, we use the value of item.
 	{
-		
+
 		if ( IsType(IT_DEED) )
 		{
 			// Deeds just represent the item they are deeding.
@@ -208,9 +212,9 @@ dword CItemVendable::GetVendorPrice( int iConvertFactor , bool forselling )
 		else
 			pItemDef = Item_GetDef();
 
-		llPrice = pItemDef->GetMakeValue(GetQuality()); //If value is a range(ex:10,20), value change depending quality 
+		llPrice = pItemDef->GetMakeValue(GetQuality()); //If value is a range(ex:10,20), value change depending quality
 	}
-	
+
 	llPrice += IMulDivLL(llPrice, maximum(iConvertFactor, -100), 100);
 	if ( llPrice > UINT32_MAX )
 		return UINT32_MAX;
